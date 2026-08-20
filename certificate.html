@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StaffPortal &mdash; Certificate Issuance</title>
+  <link rel="stylesheet" href="certificate-styles.css" />
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header" role="banner">
+    <div class="header__inner">
+
+      <a href="index.html" class="header__brand" aria-label="StaffPortal home">
+        <span class="header__logo-icon" aria-hidden="true">&#9670;</span>
+        <span class="header__logo-text">Staff<strong>Portal</strong></span>
+      </a>
+
+      <nav class="header__nav" aria-label="Primary navigation">
+        <ul class="nav__list" role="list">
+          <li class="nav__item"><a href="index.html"    class="nav__link">Dashboard</a></li>
+          <li class="nav__item"><a href="index.html#appointments" class="nav__link">Appointments</a></li>
+          <li class="nav__item nav__item--active"><a href="certificate.html" class="nav__link" aria-current="page">Certificates</a></li>
+          <li class="nav__item"><a href="#"            class="nav__link">Reports</a></li>
+        </ul>
+      </nav>
+
+      <div class="header__actions">
+        <button class="header__notify-btn" aria-label="Notifications (2 unread)" data-count="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+        </button>
+        <div class="header__profile" tabindex="0" role="button" aria-label="User profile menu">
+          <div class="header__avatar" aria-hidden="true">JD</div>
+          <div class="header__profile-info">
+            <span class="header__profile-name">Jane Doe</span>
+            <span class="header__profile-role">Senior Staff</span>
+          </div>
+          <svg class="header__chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      </div>
+
+      <button class="header__mobile-toggle" id="mobileMenuToggle" aria-controls="mobileNav" aria-expanded="false" aria-label="Toggle mobile menu">
+        <span class="hamburger__bar"></span>
+        <span class="hamburger__bar"></span>
+        <span class="hamburger__bar"></span>
+      </button>
+    </div>
+
+    <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation" hidden>
+      <ul class="mobile-nav__list" role="list">
+        <li><a href="index.html" class="mobile-nav__link">Dashboard</a></li>
+        <li><a href="index.html#appointments" class="mobile-nav__link">Appointments</a></li>
+        <li><a href="certificate.html" class="mobile-nav__link mobile-nav__link--active">Certificates</a></li>
+        <li><a href="#" class="mobile-nav__link">Reports</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main" id="main-content">
+    <div class="container">
+
+      <!-- Page title -->
+      <div class="page-title">
+        <div>
+          <h1 class="page-title__heading">Certificate Issuance</h1>
+          <p class="page-title__sub">Generate, preview, and print official staff certificates.</p>
+        </div>
+        <div class="page-title__actions">
+          <button class="btn btn--outline" id="bulkPrintBtn" data-action="bulk-print">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Bulk Print
+          </button>
+          <button class="btn btn--primary" id="newCertBtn" data-action="open-issue-form">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Issue Certificate
+          </button>
+        </div>
+      </div>
+
+      <!-- ===== STAT STRIP ===== -->
+      <section class="stat-strip" aria-label="Certificate statistics">
+        <article class="stat-strip__item">
+          <span class="stat-strip__value" data-count-to="87">0</span>
+          <span class="stat-strip__label">Issued This Month</span>
+        </article>
+        <div class="stat-strip__divider" aria-hidden="true"></div>
+        <article class="stat-strip__item">
+          <span class="stat-strip__value" data-count-to="12">0</span>
+          <span class="stat-strip__label">Pending Issuance</span>
+        </article>
+        <div class="stat-strip__divider" aria-hidden="true"></div>
+        <article class="stat-strip__item">
+          <span class="stat-strip__value" data-count-to="3">0</span>
+          <span class="stat-strip__label">Revoked</span>
+        </article>
+        <div class="stat-strip__divider" aria-hidden="true"></div>
+        <article class="stat-strip__item">
+          <span class="stat-strip__value" data-count-to="412">0</span>
+          <span class="stat-strip__label">Total Issued (All Time)</span>
+        </article>
+      </section>
+
+      <!-- ===== TWO-PANEL LAYOUT ===== -->
+      <div class="cert-layout">
+
+        <!-- LEFT PANEL — Issue Form + Preview -->
+        <aside class="cert-panel cert-panel--left">
+
+          <!-- ISSUE FORM CARD -->
+          <section class="card" id="issueFormCard" aria-labelledby="form-heading">
+            <div class="card__header">
+              <h2 class="card__title" id="form-heading">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--primary-gold)">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                Issue Certificate
+              </h2>
+              <span class="badge badge--gold">Live Preview</span>
+            </div>
+
+            <div class="card__body">
+              <form class="cert-form" id="certForm" novalidate data-form="certificate-issue">
+
+                <div class="form-group">
+                  <label class="form-label" for="certNo">Certificate No. <span class="form-label__req" aria-hidden="true">*</span></label>
+                  <div class="input-addon">
+                    <span class="input-addon__prefix">CERT-</span>
+                    <input class="form-input input-addon__field" type="text" id="certNo" name="cert_no"
+                           placeholder="2026-0001" required
+                           pattern="\d{4}-\d{4}"
+                           data-field="cert_no"
+                           data-preview="certPreviewNo" />
+                  </div>
+                  <span class="form-error" id="certNo-error" role="alert" aria-live="polite"></span>
+                </div>
+
+                <div class="form-row form-row--two">
+                  <div class="form-group">
+                    <label class="form-label" for="recipientFirst">First Name <span class="form-label__req" aria-hidden="true">*</span></label>
+                    <input class="form-input" type="text" id="recipientFirst" name="recipient_first"
+                           placeholder="Maria" required autocomplete="given-name"
+                           data-field="recipient_first" data-preview="certPreviewName" />
+                    <span class="form-error" id="recipientFirst-error" role="alert" aria-live="polite"></span>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="recipientLast">Last Name <span class="form-label__req" aria-hidden="true">*</span></label>
+                    <input class="form-input" type="text" id="recipientLast" name="recipient_last"
+                           placeholder="Santos" required autocomplete="family-name"
+                           data-field="recipient_last" data-preview="certPreviewName" />
+                    <span class="form-error" id="recipientLast-error" role="alert" aria-live="polite"></span>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="certType">Certificate Type <span class="form-label__req" aria-hidden="true">*</span></label>
+                  <select class="form-select" id="certType" name="cert_type" required
+                          data-field="cert_type" data-preview="certPreviewType">
+                    <option value="" disabled selected>Select type&hellip;</option>
+                    <option value="Employment">Certificate of Employment</option>
+                    <option value="Completion">Certificate of Completion</option>
+                    <option value="Appreciation">Certificate of Appreciation</option>
+                    <option value="Achievement">Certificate of Achievement</option>
+                    <option value="Good Standing">Certificate of Good Standing</option>
+                    <option value="Training">Training Completion Certificate</option>
+                  </select>
+                  <span class="form-error" id="certType-error" role="alert" aria-live="polite"></span>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="certPurpose">Purpose / Description <span class="form-label__req" aria-hidden="true">*</span></label>
+                  <textarea class="form-textarea" id="certPurpose" name="cert_purpose" rows="3" required
+                            placeholder="e.g., for employment abroad, for bank loan purposes&hellip;"
+                            data-field="cert_purpose" data-preview="certPreviewPurpose"></textarea>
+                  <span class="form-error" id="certPurpose-error" role="alert" aria-live="polite"></span>
+                </div>
+
+                <div class="form-row form-row--two">
+                  <div class="form-group">
+                    <label class="form-label" for="issueDate">Issue Date <span class="form-label__req" aria-hidden="true">*</span></label>
+                    <input class="form-input" type="date" id="issueDate" name="issue_date" required
+                           data-field="issue_date" data-preview="certPreviewDate" />
+                    <span class="form-error" id="issueDate-error" role="alert" aria-live="polite"></span>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="validUntil">Valid Until</label>
+                    <input class="form-input" type="date" id="validUntil" name="valid_until"
+                           data-field="valid_until" />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="issuedBy">Issuing Officer <span class="form-label__req" aria-hidden="true">*</span></label>
+                  <input class="form-input" type="text" id="issuedBy" name="issued_by"
+                         placeholder="Full name and designation" required
+                         data-field="issued_by" data-preview="certPreviewOfficer" />
+                  <span class="form-error" id="issuedBy-error" role="alert" aria-live="polite"></span>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="designation">Officer Designation <span class="form-label__req" aria-hidden="true">*</span></label>
+                  <input class="form-input" type="text" id="designation" name="designation"
+                         placeholder="e.g., HR Manager / Director" required
+                         data-field="designation" data-preview="certPreviewDesignation" />
+                  <span class="form-error" id="designation-error" role="alert" aria-live="polite"></span>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="department">Department</label>
+                  <select class="form-select" id="department" name="department"
+                          data-field="department">
+                    <option value="" disabled selected>Select department&hellip;</option>
+                    <option value="Human Resources">Human Resources</option>
+                    <option value="Finance">Finance</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Legal">Legal</option>
+                    <option value="Administration">Administration</option>
+                    <option value="Information Technology">Information Technology</option>
+                  </select>
+                </div>
+
+                <div class="form-group form-group--checkbox">
+                  <label class="checkbox-label">
+                    <input type="checkbox" class="checkbox-input" id="certConfirm"
+                           name="cert_confirm" required data-field="cert_confirm" />
+                    <span class="checkbox-custom" aria-hidden="true"></span>
+                    I certify that the information above is accurate and authorized for issuance.
+                  </label>
+                  <span class="form-error" id="certConfirm-error" role="alert" aria-live="polite"></span>
+                </div>
+
+                <div class="form-actions">
+                  <button type="reset" class="btn btn--ghost" data-action="reset-cert-form">Clear</button>
+                  <button type="button" class="btn btn--outline" id="previewScrollBtn" data-action="scroll-preview">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    Preview
+                  </button>
+                  <button type="submit" class="btn btn--primary" id="issueCertBtn" data-action="issue-certificate">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Issue
+                  </button>
+                </div>
+
+              </form>
+            </div>
+          </section>
+
+          <!-- CERTIFICATE PREVIEW CARD (screen) -->
+          <section class="card cert-preview-card" id="previewCard" aria-labelledby="preview-heading">
+            <div class="card__header">
+              <h2 class="card__title" id="preview-heading">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--primary-gold)">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                Live Preview
+              </h2>
+              <div class="card__header-actions">
+                <button class="btn btn--outline btn--sm" id="printCertBtn" data-action="print-cert">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                    <rect x="6" y="14" width="12" height="8"/>
+                  </svg>
+                  Print
+                </button>
+                <button class="btn btn--outline btn--sm" id="downloadPdfBtn" data-action="download-pdf">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Save PDF
+                </button>
+              </div>
+            </div>
+            <div class="card__body card__body--preview">
+              <!-- The printable certificate -->
+              <div class="certificate" id="certificatePreview" role="document" aria-label="Certificate preview">
+
+                <div class="certificate__border-outer">
+                  <div class="certificate__border-inner">
+
+                    <!-- Watermark -->
+                    <div class="certificate__watermark" aria-hidden="true">&#9670;</div>
+
+                    <!-- Header ornament -->
+                    <div class="certificate__ornament certificate__ornament--top" aria-hidden="true">
+                      <span class="ornament__line"></span>
+                      <span class="ornament__diamond">&#9670;</span>
+                      <span class="ornament__line"></span>
+                    </div>
+
+                    <header class="certificate__header">
+                      <div class="certificate__org-logo" aria-hidden="true">&#9670;</div>
+                      <p class="certificate__org-name">Republic of the Philippines</p>
+                      <p class="certificate__org-sub">Department of Human Resources &amp; Administration</p>
+                      <p class="certificate__org-address">City Hall Complex, Manila &bull; Tel: (02) 8123-4567</p>
+                    </header>
+
+                    <div class="certificate__seal-row" aria-hidden="true">
+                      <span class="certificate__rule"></span>
+                      <div class="certificate__seal">
+                        <span class="certificate__seal-inner">OFFICIAL</span>
+                      </div>
+                      <span class="certificate__rule"></span>
+                    </div>
+
+                    <div class="certificate__title-block">
+                      <p class="certificate__title-label">This Certifies That</p>
+                    </div>
+
+                    <div class="certificate__recipient">
+                      <span class="certificate__recipient-name" id="certPreviewName">&#8212; Name of Recipient &#8212;</span>
+                    </div>
+
+                    <div class="certificate__body-text">
+                      <p>is hereby awarded this</p>
+                      <p class="certificate__type" id="certPreviewType">Certificate of [Type]</p>
+                      <p class="certificate__purpose" id="certPreviewPurpose">
+                        This certificate is issued upon request for official purposes.
+                      </p>
+                    </div>
+
+                    <div class="certificate__meta-row">
+                      <div class="certificate__meta-item">
+                        <span class="certificate__meta-label">Certificate No.</span>
+                        <span class="certificate__meta-value" id="certPreviewNo">CERT-&#8212;</span>
+                      </div>
+                      <div class="certificate__meta-item">
+                        <span class="certificate__meta-label">Date Issued</span>
+                        <span class="certificate__meta-value" id="certPreviewDate">&#8212;</span>
+                      </div>
+                    </div>
+
+                    <!-- Signature block -->
+                    <div class="certificate__sig-row">
+                      <div class="certificate__sig-block">
+                        <div class="certificate__sig-line"></div>
+                        <p class="certificate__sig-name" id="certPreviewOfficer">Issuing Officer</p>
+                        <p class="certificate__sig-title" id="certPreviewDesignation">Designation</p>
+                      </div>
+                      <div class="certificate__sig-block">
+                        <div class="certificate__sig-line"></div>
+                        <p class="certificate__sig-name">Noted by:</p>
+                        <p class="certificate__sig-title">Department Head</p>
+                      </div>
+                    </div>
+
+                    <!-- Bottom ornament -->
+                    <div class="certificate__ornament certificate__ornament--bottom" aria-hidden="true">
+                      <span class="ornament__line"></span>
+                      <span class="ornament__diamond">&#9670;</span>
+                      <span class="ornament__line"></span>
+                    </div>
+
+                    <footer class="certificate__footer">
+                      <p>This document is computer-generated and valid without a manual signature unless otherwise stated.</p>
+                    </footer>
+
+                  </div><!-- /.certificate__border-inner -->
+                </div><!-- /.certificate__border-outer -->
+
+              </div><!-- /.certificate -->
+            </div><!-- /.card__body -->
+          </section>
+
+        </aside><!-- /.cert-panel--left -->
+
+        <!-- RIGHT PANEL — Certificates Table -->
+        <section class="cert-panel cert-panel--right" aria-labelledby="cert-table-heading">
+          <div class="card">
+            <div class="card__header">
+              <h2 class="card__title" id="cert-table-heading">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="color:var(--primary-gold)">
+                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                  <line x1="8" y1="18" x2="21" y2="18"/>
+                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+                  <line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+                Issued Certificates
+              </h2>
+              <div class="card__header-actions">
+                <div class="search-wrap">
+                  <label for="certSearch" class="sr-only">Search certificates</label>
+                  <svg class="search-wrap__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input type="search" id="certSearch" class="table-search" placeholder="Search&hellip;" aria-controls="certTable" />
+                </div>
+                <select class="filter-select" id="statusFilter" aria-label="Filter by status" data-filter="status">
+                  <option value="">All Status</option>
+                  <option value="active">Active</option>
+                  <option value="revoked">Revoked</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="card__body card__body--flush">
+              <div class="table-wrapper" role="region" aria-label="Certificates table" tabindex="0">
+                <table class="data-table" id="certTable" data-table="certificates">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="data-table__th" aria-sort="none" data-sort="cert-no">
+                        <button class="sort-btn">Cert No. <span class="sort-btn__icon" aria-hidden="true">&#8597;</span></button>
+                      </th>
+                      <th scope="col" class="data-table__th" aria-sort="descending" data-sort="name">
+                        <button class="sort-btn">Recipient <span class="sort-btn__icon" aria-hidden="true">&#8595;</span></button>
+                      </th>
+                      <th scope="col" class="data-table__th">Type</th>
+                      <th scope="col" class="data-table__th" aria-sort="none" data-sort="date">
+                        <button class="sort-btn">Issued <span class="sort-btn__icon" aria-hidden="true">&#8597;</span></button>
+                      </th>
+                      <th scope="col" class="data-table__th">Status</th>
+                      <th scope="col" class="data-table__th data-table__th--actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="certTableBody">
+
+                    <tr class="data-table__row" data-status="active" data-cert-no="CERT-2026-0087" data-recipient="Maria Santos" data-type="Employment" data-date="2026-08-18">
+                      <td class="data-table__td data-table__td--mono" data-label="Cert No.">CERT-2026-0087</td>
+                      <td class="data-table__td" data-label="Recipient">Maria Santos</td>
+                      <td class="data-table__td" data-label="Type"><span class="type-pill type-pill--employment">Employment</span></td>
+                      <td class="data-table__td" data-label="Issued">Aug 18, 2026</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--active">Active</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="icon-btn icon-btn--view"  aria-label="View CERT-2026-0087"  data-action="view-cert"  data-cert-no="CERT-2026-0087">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--print" aria-label="Print CERT-2026-0087" data-action="print-row" data-cert-no="CERT-2026-0087">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--revoke" aria-label="Revoke CERT-2026-0087" data-action="revoke-cert" data-cert-no="CERT-2026-0087">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row" data-status="active" data-cert-no="CERT-2026-0086" data-recipient="Ana Reyes" data-type="Completion" data-date="2026-08-17">
+                      <td class="data-table__td data-table__td--mono" data-label="Cert No.">CERT-2026-0086</td>
+                      <td class="data-table__td" data-label="Recipient">Ana Reyes</td>
+                      <td class="data-table__td" data-label="Type"><span class="type-pill type-pill--completion">Completion</span></td>
+                      <td class="data-table__td" data-label="Issued">Aug 17, 2026</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--active">Active</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="icon-btn icon-btn--view"  aria-label="View CERT-2026-0086"  data-action="view-cert"  data-cert-no="CERT-2026-0086">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--print" aria-label="Print CERT-2026-0086" data-action="print-row" data-cert-no="CERT-2026-0086">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--revoke" aria-label="Revoke CERT-2026-0086" data-action="revoke-cert" data-cert-no="CERT-2026-0086">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row" data-status="expired" data-cert-no="CERT-2026-0080" data-recipient="Carlos Mendoza" data-type="Training" data-date="2026-08-10">
+                      <td class="data-table__td data-table__td--mono" data-label="Cert No.">CERT-2026-0080</td>
+                      <td class="data-table__td" data-label="Recipient">Carlos Mendoza</td>
+                      <td class="data-table__td" data-label="Type"><span class="type-pill type-pill--training">Training</span></td>
+                      <td class="data-table__td" data-label="Issued">Aug 10, 2026</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--expired">Expired</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="icon-btn icon-btn--view"  aria-label="View CERT-2026-0080"  data-action="view-cert"  data-cert-no="CERT-2026-0080">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--print" aria-label="Print CERT-2026-0080" data-action="print-row" data-cert-no="CERT-2026-0080">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row" data-status="revoked" data-cert-no="CERT-2026-0071" data-recipient="Leo Fernandez" data-type="Good Standing" data-date="2026-07-28">
+                      <td class="data-table__td data-table__td--mono" data-label="Cert No.">CERT-2026-0071</td>
+                      <td class="data-table__td" data-label="Recipient">Leo Fernandez</td>
+                      <td class="data-table__td" data-label="Type"><span class="type-pill type-pill--standing">Good Standing</span></td>
+                      <td class="data-table__td" data-label="Issued">Jul 28, 2026</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--revoked">Revoked</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="icon-btn icon-btn--view" aria-label="View CERT-2026-0071" data-action="view-cert" data-cert-no="CERT-2026-0071">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row" data-status="active" data-cert-no="CERT-2026-0065" data-recipient="Sofia Villanueva" data-type="Appreciation" data-date="2026-07-15">
+                      <td class="data-table__td data-table__td--mono" data-label="Cert No.">CERT-2026-0065</td>
+                      <td class="data-table__td" data-label="Recipient">Sofia Villanueva</td>
+                      <td class="data-table__td" data-label="Type"><span class="type-pill type-pill--appreciation">Appreciation</span></td>
+                      <td class="data-table__td" data-label="Issued">Jul 15, 2026</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--active">Active</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="icon-btn icon-btn--view"  aria-label="View CERT-2026-0065"  data-action="view-cert"  data-cert-no="CERT-2026-0065">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--print" aria-label="Print CERT-2026-0065" data-action="print-row" data-cert-no="CERT-2026-0065">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--revoke" aria-label="Revoke CERT-2026-0065" data-action="revoke-cert" data-cert-no="CERT-2026-0065">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                    <tr class="data-table__row" data-status="active" data-cert-no="CERT-2026-0058" data-recipient="Ricardo Cruz" data-type="Achievement" data-date="2026-07-05">
+                      <td class="data-table__td data-table__td--mono" data-label="Cert No.">CERT-2026-0058</td>
+                      <td class="data-table__td" data-label="Recipient">Ricardo Cruz</td>
+                      <td class="data-table__td" data-label="Type"><span class="type-pill type-pill--achievement">Achievement</span></td>
+                      <td class="data-table__td" data-label="Issued">Jul 5, 2026</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--active">Active</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="icon-btn icon-btn--view"  aria-label="View CERT-2026-0058"  data-action="view-cert"  data-cert-no="CERT-2026-0058">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--print" aria-label="Print CERT-2026-0058" data-action="print-row" data-cert-no="CERT-2026-0058">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        </button>
+                        <button class="icon-btn icon-btn--revoke" aria-label="Revoke CERT-2026-0058" data-action="revoke-cert" data-cert-no="CERT-2026-0058">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Empty state (hidden by default) -->
+              <div class="table-empty" id="tableEmpty" hidden aria-live="polite">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color:var(--border-light-gold)">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <p>No certificates match your search.</p>
+              </div>
+
+              <div class="table-footer">
+                <span class="table-footer__info" id="certTableInfo">Showing 6 of 412 certificates</span>
+                <div class="pagination" role="navigation" aria-label="Certificates pagination">
+                  <button class="pagination__btn" disabled aria-label="Previous page">&lsaquo;</button>
+                  <button class="pagination__btn pagination__btn--active" aria-current="page" aria-label="Page 1">1</button>
+                  <button class="pagination__btn" aria-label="Page 2">2</button>
+                  <button class="pagination__btn" aria-label="Page 3">3</button>
+                  <span class="pagination__ellipsis">&hellip;</span>
+                  <button class="pagination__btn" aria-label="Page 69">69</button>
+                  <button class="pagination__btn" aria-label="Next page">&rsaquo;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div><!-- /.cert-layout -->
+    </div><!-- /.container -->
+  </main>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ===== CONFIRMATION MODAL ===== -->
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title" id="modalTitle">Confirm Action</h2>
+        <button class="modal__close" id="modalClose" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal__body" id="modalBody"></div>
+      <div class="modal__footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer" role="contentinfo">
+    <div class="container footer__inner">
+      <p class="footer__copy">&copy; 2026 StaffPortal. All rights reserved.</p>
+      <nav class="footer__nav" aria-label="Footer links">
+        <a href="#" class="footer__link">Privacy Policy</a>
+        <a href="#" class="footer__link">Terms of Use</a>
+        <a href="#" class="footer__link">Support</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="certificate-script.js"></script>
+</body>
+</html>

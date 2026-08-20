@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StaffPortal &mdash; Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ===== HEADER / NAV ===== -->
+  <header class="header" role="banner">
+    <div class="header__inner">
+      <a href="#" class="header__brand" aria-label="StaffPortal home">
+        <span class="header__logo-icon" aria-hidden="true">&#9670;</span>
+        <span class="header__logo-text">Staff<strong>Portal</strong></span>
+      </a>
+
+      <nav class="header__nav" aria-label="Primary navigation">
+        <ul class="nav__list" role="list">
+          <li class="nav__item nav__item--active"><a href="#" class="nav__link" aria-current="page">Dashboard</a></li>
+          <li class="nav__item"><a href="#appointments" class="nav__link">Appointments</a></li>
+          <li class="nav__item"><a href="#certificates" class="nav__link">Certificates</a></li>
+          <li class="nav__item"><a href="#reports" class="nav__link">Reports</a></li>
+        </ul>
+      </nav>
+
+      <div class="header__actions">
+        <button class="header__notify-btn" aria-label="Notifications (3 unread)" data-count="3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+        </button>
+        <div class="header__profile" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" aria-label="User profile menu">
+          <div class="header__avatar" aria-hidden="true">JD</div>
+          <div class="header__profile-info">
+            <span class="header__profile-name">Jane Doe</span>
+            <span class="header__profile-role">Senior Staff</span>
+          </div>
+          <svg class="header__chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      </div>
+
+      <button class="header__mobile-toggle" id="mobileMenuToggle" aria-controls="mobileNav" aria-expanded="false" aria-label="Toggle mobile menu">
+        <span class="hamburger__bar"></span>
+        <span class="hamburger__bar"></span>
+        <span class="hamburger__bar"></span>
+      </button>
+    </div>
+
+    <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation" hidden>
+      <ul class="mobile-nav__list" role="list">
+        <li><a href="#" class="mobile-nav__link mobile-nav__link--active">Dashboard</a></li>
+        <li><a href="#appointments" class="mobile-nav__link">Appointments</a></li>
+        <li><a href="#certificates" class="mobile-nav__link">Certificates</a></li>
+        <li><a href="#reports" class="mobile-nav__link">Reports</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main" id="main-content">
+    <div class="container">
+
+      <!-- Page Title -->
+      <div class="page-title">
+        <div>
+          <h1 class="page-title__heading">Dashboard</h1>
+          <p class="page-title__sub">Monday, August 18, 2026 &mdash; Good morning, Jane.</p>
+        </div>
+        <button class="btn btn--primary" data-action="new-appointment">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Appointment
+        </button>
+      </div>
+
+      <!-- ===== STAT CARDS ===== -->
+      <section class="stats" aria-label="Summary statistics">
+        <div class="stats__grid">
+
+          <article class="stat-card" data-stat="total">
+            <div class="stat-card__icon-wrap" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <div class="stat-card__body">
+              <span class="stat-card__label">Total Appointments</span>
+              <span class="stat-card__value" data-count-to="248">0</span>
+              <span class="stat-card__trend stat-card__trend--up">&#8593; 12% this month</span>
+            </div>
+          </article>
+
+          <article class="stat-card" data-stat="pending">
+            <div class="stat-card__icon-wrap" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div class="stat-card__body">
+              <span class="stat-card__label">Pending Requests</span>
+              <span class="stat-card__value" data-count-to="34">0</span>
+              <span class="stat-card__trend stat-card__trend--neutral">&#8594; Awaiting review</span>
+            </div>
+          </article>
+
+          <article class="stat-card" data-stat="approved">
+            <div class="stat-card__icon-wrap" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="stat-card__body">
+              <span class="stat-card__label">Approved Today</span>
+              <span class="stat-card__value" data-count-to="19">0</span>
+              <span class="stat-card__trend stat-card__trend--up">&#8593; 5 more than yesterday</span>
+            </div>
+          </article>
+
+          <article class="stat-card" data-stat="certs">
+            <div class="stat-card__icon-wrap" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            </div>
+            <div class="stat-card__body">
+              <span class="stat-card__label">Certificates Issued</span>
+              <span class="stat-card__value" data-count-to="87">0</span>
+              <span class="stat-card__trend stat-card__trend--down">&#8595; 3 revoked</span>
+            </div>
+          </article>
+
+        </div>
+      </section>
+
+      <!-- ===== TWO-COLUMN LAYOUT ===== -->
+      <div class="dashboard-grid">
+
+        <!-- LEFT: APPOINTMENT REQUEST FORM -->
+        <section class="card" id="appointments" aria-labelledby="form-heading">
+          <div class="card__header">
+            <h2 class="card__title" id="form-heading">Appointment Request</h2>
+            <span class="badge badge--gold">New</span>
+          </div>
+          <div class="card__body">
+            <form class="appt-form" id="appointmentForm" novalidate data-form="appointment-request">
+
+              <div class="form-row form-row--two">
+                <div class="form-group">
+                  <label class="form-label" for="firstName">First Name <span class="form-label__required" aria-hidden="true">*</span></label>
+                  <input class="form-input" type="text" id="firstName" name="first_name" placeholder="Jane" required autocomplete="given-name" data-field="first_name" />
+                  <span class="form-error" id="firstName-error" role="alert" aria-live="polite"></span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="lastName">Last Name <span class="form-label__required" aria-hidden="true">*</span></label>
+                  <input class="form-input" type="text" id="lastName" name="last_name" placeholder="Doe" required autocomplete="family-name" data-field="last_name" />
+                  <span class="form-error" id="lastName-error" role="alert" aria-live="polite"></span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="email">Email Address <span class="form-label__required" aria-hidden="true">*</span></label>
+                <input class="form-input" type="email" id="email" name="email" placeholder="jane@example.com" required autocomplete="email" data-field="email" />
+                <span class="form-error" id="email-error" role="alert" aria-live="polite"></span>
+              </div>
+
+              <div class="form-row form-row--two">
+                <div class="form-group">
+                  <label class="form-label" for="apptDate">Preferred Date <span class="form-label__required" aria-hidden="true">*</span></label>
+                  <input class="form-input" type="date" id="apptDate" name="appt_date" required data-field="appt_date" />
+                  <span class="form-error" id="apptDate-error" role="alert" aria-live="polite"></span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="apptTime">Preferred Time <span class="form-label__required" aria-hidden="true">*</span></label>
+                  <input class="form-input" type="time" id="apptTime" name="appt_time" required data-field="appt_time" />
+                  <span class="form-error" id="apptTime-error" role="alert" aria-live="polite"></span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="apptType">Appointment Type <span class="form-label__required" aria-hidden="true">*</span></label>
+                <select class="form-select" id="apptType" name="appt_type" required data-field="appt_type">
+                  <option value="" disabled selected>Select a type&hellip;</option>
+                  <option value="consultation">Consultation</option>
+                  <option value="follow_up">Follow-Up</option>
+                  <option value="certificate">Certificate Request</option>
+                  <option value="grievance">Grievance</option>
+                  <option value="other">Other</option>
+                </select>
+                <span class="form-error" id="apptType-error" role="alert" aria-live="polite"></span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="staffId">Assigned Staff ID</label>
+                <input class="form-input" type="text" id="staffId" name="staff_id" placeholder="STF-0000" pattern="STF-\d{4}" autocomplete="off" data-field="staff_id" />
+                <span class="form-hint">Format: STF-0000 (optional)</span>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="notes">Additional Notes</label>
+                <textarea class="form-textarea" id="notes" name="notes" rows="3" placeholder="Provide any relevant details here&hellip;" data-field="notes"></textarea>
+              </div>
+
+              <div class="form-group form-group--checkbox">
+                <label class="checkbox-label">
+                  <input type="checkbox" class="checkbox-input" id="agreeTerms" name="agree_terms" required data-field="agree_terms" />
+                  <span class="checkbox-custom" aria-hidden="true"></span>
+                  I confirm this request is accurate and complete.
+                </label>
+                <span class="form-error" id="agreeTerms-error" role="alert" aria-live="polite"></span>
+              </div>
+
+              <div class="form-actions">
+                <button type="reset" class="btn btn--outline" data-action="reset-form">Clear</button>
+                <button type="submit" class="btn btn--primary" id="submitBtn" data-action="submit-appointment">
+                  Submit Request
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </section>
+
+        <!-- RIGHT: RECENT APPOINTMENTS TABLE + QUICK STATS -->
+        <div class="right-col">
+
+          <!-- Progress tracker -->
+          <section class="card" aria-labelledby="progress-heading">
+            <div class="card__header">
+              <h2 class="card__title" id="progress-heading">Monthly Progress</h2>
+              <span class="badge badge--outline">August 2026</span>
+            </div>
+            <div class="card__body">
+              <div class="progress-list">
+                <div class="progress-item">
+                  <div class="progress-item__meta">
+                    <span class="progress-item__label">Appointments Completed</span>
+                    <span class="progress-item__value">186 / 250</span>
+                  </div>
+                  <div class="progress-bar" role="progressbar" aria-valuenow="74" aria-valuemin="0" aria-valuemax="100" aria-label="74% appointments completed">
+                    <div class="progress-bar__fill" style="--pct: 74%"></div>
+                  </div>
+                </div>
+                <div class="progress-item">
+                  <div class="progress-item__meta">
+                    <span class="progress-item__label">Certificates Issued</span>
+                    <span class="progress-item__value">87 / 120</span>
+                  </div>
+                  <div class="progress-bar" role="progressbar" aria-valuenow="73" aria-valuemin="0" aria-valuemax="100" aria-label="73% certificates issued">
+                    <div class="progress-bar__fill" style="--pct: 73%"></div>
+                  </div>
+                </div>
+                <div class="progress-item">
+                  <div class="progress-item__meta">
+                    <span class="progress-item__label">Grievances Resolved</span>
+                    <span class="progress-item__value">12 / 18</span>
+                  </div>
+                  <div class="progress-bar" role="progressbar" aria-valuenow="67" aria-valuemin="0" aria-valuemax="100" aria-label="67% grievances resolved">
+                    <div class="progress-bar__fill" style="--pct: 67%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Table -->
+          <section class="card" aria-labelledby="table-heading">
+            <div class="card__header">
+              <h2 class="card__title" id="table-heading">Recent Appointments</h2>
+              <div class="card__header-actions">
+                <label for="tableSearch" class="sr-only">Search appointments</label>
+                <input type="search" id="tableSearch" class="table-search" placeholder="Search&hellip;" aria-controls="appointmentsTable" />
+              </div>
+            </div>
+            <div class="card__body card__body--flush">
+              <div class="table-wrapper" role="region" aria-label="Appointments table" tabindex="0">
+                <table class="data-table" id="appointmentsTable" data-table="appointments">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="data-table__th" aria-sort="none" data-sort="id">
+                        <button class="sort-btn">ID <span class="sort-btn__icon" aria-hidden="true">&#8597;</span></button>
+                      </th>
+                      <th scope="col" class="data-table__th" aria-sort="none" data-sort="name">
+                        <button class="sort-btn">Name <span class="sort-btn__icon" aria-hidden="true">&#8597;</span></button>
+                      </th>
+                      <th scope="col" class="data-table__th">Type</th>
+                      <th scope="col" class="data-table__th" aria-sort="none" data-sort="date">
+                        <button class="sort-btn">Date <span class="sort-btn__icon" aria-hidden="true">&#8597;</span></button>
+                      </th>
+                      <th scope="col" class="data-table__th">Status</th>
+                      <th scope="col" class="data-table__th data-table__th--actions">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tableBody">
+                    <tr class="data-table__row">
+                      <td class="data-table__td data-table__td--id" data-label="ID">APT-001</td>
+                      <td class="data-table__td" data-label="Name">Maria Santos</td>
+                      <td class="data-table__td" data-label="Type">Consultation</td>
+                      <td class="data-table__td" data-label="Date">2026-08-18</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--approved">Approved</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="action-btn action-btn--view" aria-label="View APT-001" data-id="APT-001" data-action="view">View</button>
+                        <button class="action-btn action-btn--cert" aria-label="Print certificate for APT-001" data-id="APT-001" data-action="print-cert">Cert</button>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row">
+                      <td class="data-table__td data-table__td--id" data-label="ID">APT-002</td>
+                      <td class="data-table__td" data-label="Name">Ricardo Cruz</td>
+                      <td class="data-table__td" data-label="Type">Follow-Up</td>
+                      <td class="data-table__td" data-label="Date">2026-08-18</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--pending">Pending</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="action-btn action-btn--view" aria-label="View APT-002" data-id="APT-002" data-action="view">View</button>
+                        <button class="action-btn action-btn--approve" aria-label="Approve APT-002" data-id="APT-002" data-action="approve">Approve</button>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row">
+                      <td class="data-table__td data-table__td--id" data-label="ID">APT-003</td>
+                      <td class="data-table__td" data-label="Name">Ana Reyes</td>
+                      <td class="data-table__td" data-label="Type">Certificate</td>
+                      <td class="data-table__td" data-label="Date">2026-08-17</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--approved">Approved</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="action-btn action-btn--view" aria-label="View APT-003" data-id="APT-003" data-action="view">View</button>
+                        <button class="action-btn action-btn--cert" aria-label="Print certificate for APT-003" data-id="APT-003" data-action="print-cert">Cert</button>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row">
+                      <td class="data-table__td data-table__td--id" data-label="ID">APT-004</td>
+                      <td class="data-table__td" data-label="Name">Leo Fernandez</td>
+                      <td class="data-table__td" data-label="Type">Grievance</td>
+                      <td class="data-table__td" data-label="Date">2026-08-17</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--rejected">Rejected</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="action-btn action-btn--view" aria-label="View APT-004" data-id="APT-004" data-action="view">View</button>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row">
+                      <td class="data-table__td data-table__td--id" data-label="ID">APT-005</td>
+                      <td class="data-table__td" data-label="Name">Sofia Villanueva</td>
+                      <td class="data-table__td" data-label="Type">Consultation</td>
+                      <td class="data-table__td" data-label="Date">2026-08-16</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--pending">Pending</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="action-btn action-btn--view" aria-label="View APT-005" data-id="APT-005" data-action="view">View</button>
+                        <button class="action-btn action-btn--approve" aria-label="Approve APT-005" data-id="APT-005" data-action="approve">Approve</button>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row">
+                      <td class="data-table__td data-table__td--id" data-label="ID">APT-006</td>
+                      <td class="data-table__td" data-label="Name">Carlos Mendoza</td>
+                      <td class="data-table__td" data-label="Type">Other</td>
+                      <td class="data-table__td" data-label="Date">2026-08-15</td>
+                      <td class="data-table__td" data-label="Status"><span class="status-badge status-badge--approved">Approved</span></td>
+                      <td class="data-table__td data-table__td--actions" data-label="Actions">
+                        <button class="action-btn action-btn--view" aria-label="View APT-006" data-id="APT-006" data-action="view">View</button>
+                        <button class="action-btn action-btn--cert" aria-label="Print certificate for APT-006" data-id="APT-006" data-action="print-cert">Cert</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="table-footer">
+                <span class="table-footer__info" id="tableInfo">Showing 6 of 248 entries</span>
+                <div class="pagination" role="navigation" aria-label="Table pagination">
+                  <button class="pagination__btn" disabled aria-label="Previous page">&lsaquo;</button>
+                  <button class="pagination__btn pagination__btn--active" aria-current="page" aria-label="Page 1">1</button>
+                  <button class="pagination__btn" aria-label="Page 2">2</button>
+                  <button class="pagination__btn" aria-label="Page 3">3</button>
+                  <span class="pagination__ellipsis">&hellip;</span>
+                  <button class="pagination__btn" aria-label="Page 42">42</button>
+                  <button class="pagination__btn" aria-label="Next page">&rsaquo;</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div><!-- /.right-col -->
+      </div><!-- /.dashboard-grid -->
+
+    </div><!-- /.container -->
+  </main>
+
+  <!-- ===== TOAST NOTIFICATIONS ===== -->
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- ===== MODAL (view / approve confirmation) ===== -->
+  <div class="modal-overlay" id="modalOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title" id="modalTitle">Appointment Details</h2>
+        <button class="modal__close" id="modalClose" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal__body" id="modalBody"></div>
+      <div class="modal__footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer" role="contentinfo">
+    <div class="container footer__inner">
+      <p class="footer__copy">&copy; 2026 StaffPortal. All rights reserved.</p>
+      <nav class="footer__nav" aria-label="Footer navigation">
+        <a href="#" class="footer__link">Privacy Policy</a>
+        <a href="#" class="footer__link">Terms of Use</a>
+        <a href="#" class="footer__link">Support</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
