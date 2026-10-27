@@ -1,181 +1,546 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, createContext, useContext } from "react";
+import { LayoutDashboard, Inbox, CalendarDays, BookOpen, FileText, ClipboardList, BarChart3, Users, SlidersHorizontal, Settings, ShieldCheck, LogOut, X, HelpCircle, ChevronLeft, ChevronRight, Info, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import logoSrc from "@/imports/logo.png";
-import loginBgSrc from "@/imports/image-1.png";
+import parishBanner from "@/imports/PDSPA1.jpg";
+import { form97p1B64, form97p2B64 } from "@/imports/form97base64";
+/* Recharts removed — custom SimpleBarChart used instead to avoid duplicate-key warnings */
 
 /* ─── TOKENS ─────────────────────────────────────────────── */
 const T = {
   bg:       "#FFFDF5",
   surface:  "#FFFFFF",
-  border:   "#EDE8D4",
-  borderMd: "#D6CC9A",
+  border:   "#E3DCC0",
+  borderMd: "#BFB27A",
   text:     "#1A1400",
-  sub:      "#5C5020",
-  muted:    "#A8964A",
+  sub:      "#4A4018",
+  muted:    "#6E5F28",
   primary:  "#C9960A",
-  priHov:   "#A87D08",
+  priHov:   "#8A6706",
   priLight: "#FEF9E7",
-  green:    "#16A34A", greenL: "#F0FDF4", greenB: "#BBF7D0",
+  green:    "#15803D", greenL: "#F0FDF4", greenB: "#BBF7D0",
   amber:    "#92400E", amberL: "#FFFBEB", amberB: "#FDE68A",
   red:      "#DC2626", redL:   "#FEF2F2", redB:   "#FECACA",
   blue:     "#1D4ED8", blueL:  "#EFF6FF", blueB:  "#BFDBFE",
   purple:   "#7C3AED", purpleL:"#F5F3FF", purpleB:"#DDD6FE",
 };
 
-/* ─── SACRAMENT CONFIG ───────────────────────────────────── */
+/* ─── SERVICE CONFIG ─────────────────────────────────────── */
 const SACR: Record<string, { col: string; light: string; cert: string }> = {
-  "Baptismal":                { col:"#2563EB", light:"#EFF6FF", cert:"received the Sacrament of Holy Baptism" },
+  "Baptism":                  { col:"#2563EB", light:"#EFF6FF", cert:"received the Sacrament of Holy Baptism" },
   "Confirmation":             { col:"#7C3AED", light:"#F5F3FF", cert:"received the Sacrament of Confirmation" },
   "First Holy Communion":     { col:"#B45309", light:"#FFFBEB", cert:"received the Sacrament of First Holy Communion" },
-  "Matrimony":                { col:"#BE185D", light:"#FDF2F8", cert:"were united in the Sacrament of Holy Matrimony" },
-  "Burial/Death":             { col:"#475569", light:"#F8FAFC", cert:"received the Last Rites of the Church and was interred" },
+  "Marriage":                 { col:"#BE185D", light:"#FDF2F8", cert:"were united in the Sacrament of Holy Matrimony" },
+  "Funeral Mass":             { col:"#475569", light:"#F1F5F9", cert:"was commended to God in the Funeral Mass" },
+  "Death Certificate":        { col:"#334155", light:"#F8FAFC", cert:"is recorded in the Register of Dead of this Parish" },
   "No Record":                { col:"#DC2626", light:"#FEF2F2", cert:"no sacramental record was found on file" },
   "Good Standing/Membership": { col:"#16A34A", light:"#F0FDF4", cert:"is a registered parishioner in good standing" },
 };
 const SACR_LIST = Object.keys(SACR);
+/* Only these four have parish-approved printable layouts */
+const PRINTABLE = ["Baptism", "Confirmation", "Marriage", "Death Certificate"];
+const CERT_CODE: Record<string, string> = { "Baptism":"BAP", "Confirmation":"CON", "Marriage":"MAR", "Death Certificate":"DTH" };
+
+const ACTIVITY_CATS: Record<string, { col: string; light: string }> = {
+  "Wedding Mass":      { col:"#BE185D", light:"#FDF2F8" },
+  "Funeral Mass":      { col:"#475569", light:"#F1F5F9" },
+  "Fiesta Mass":       { col:"#C2410C", light:"#FFF7ED" },
+  "Holy Mass":         { col:"#2563EB", light:"#EFF6FF" },
+  "Barangay Mass":     { col:"#A16207", light:"#FEFCE8" },
+  "Parish Activity":   { col:"#7C3AED", light:"#F5F3FF" },
+  "Holiday":           { col:"#0F766E", light:"#F0FDFA" },
+  "Closed Office Day": { col:"#DC2626", light:"#FEF2F2" },
+};
+const ACTIVITY_CAT_LIST = Object.keys(ACTIVITY_CATS);
+const MASS_CATS = ["Wedding Mass","Funeral Mass","Fiesta Mass","Holy Mass","Barangay Mass"];
+
+const PRIESTS = [
+  "Rev. Fr. Rene B. Tabios (Parish Priest)",
+  "Rev. Fr. Domingo S. Cruz (Parochial Vicar)",
+  "Rev. Fr. Mark Anthony L. Ibasco (Assisting Priest)",
+];
+
+const BOOK_TYPES: Record<string, string> = {
+  "Baptismal Register":       "Baptism",
+  "Confirmation Register":    "Confirmation",
+  "First Communion Register": "First Holy Communion",
+  "Marriage Register":        "Marriage",
+  "Register of Dead":         "Death Certificate",
+};
+const BOOK_TYPE_LIST = Object.keys(BOOK_TYPES);
+
+type MarSec = "registry"|"husband"|"wife"|"consent"|"details"|"officer"|"witnesses"|"affSol"|"affDel";
+const MAR_SECTIONS: { id: MarSec; label: string; hint: string }[] = [
+  { id:"registry",  label:"Registry Info",                       hint:"Province, City/Municipality and Registry No." },
+  { id:"husband",   label:"Husband's Information",               hint:"Items 1–11 for the husband" },
+  { id:"wife",      label:"Wife's Information",                  hint:"Items 1–11 for the wife" },
+  { id:"consent",   label:"Consent / Advice",                    hint:"Items 12–14 — person who gave consent or advice" },
+  { id:"details",   label:"Marriage Details",                    hint:"Items 15–18 — place, date and time of marriage" },
+  { id:"officer",   label:"Solemnizing Officer & License",       hint:"Item 19 — officer and marriage license basis" },
+  { id:"witnesses", label:"Witnesses",                           hint:"Item 20 — witnesses (print name)" },
+  { id:"affSol",    label:"Affidavit of Solemnizing Officer",    hint:"Reverse side — for marriages exempt from license" },
+  { id:"affDel",    label:"Affidavit for Delayed Registration",  hint:"Reverse side — when registration is delayed" },
+];
 
 /* ─── TYPES ──────────────────────────────────────────────── */
-type View       = "dashboard"|"appointments"|"certificates"|"book-entries"|"funeral"|"calendar"|"reports";
-type AppStatus  = "pending"|"verified"|"scheduled"|"completed"|"cancelled";
-type UserRole   = "admin"|"staff";
+type View = "dashboard"|"requests"|"calendar"|"book"|"certificates"|"issuance"|"reports"|"staff"|"services"|"settings"|"audit";
+type ReqStatus = "pending"|"verified"|"scheduled"|"rejected"|"completed"|"cancelled";
+type UserRole  = "staff"|"admin";
+interface Auth { id: string; name: string; username: string; role: UserRole; superadmin: boolean; since: string; }
+interface Focus { requestId?: string; bookPrefill?: string; certRequestId?: string; }
+interface MarriageFormData {
+  province: string; cityMun: string; registryNo: string;
+  hFirst: string; hMiddle: string; hLast: string;
+  hDobDay: string; hDobMonth: string; hDobYear: string; hAge: string;
+  hPobCity: string; hPobProvince: string; hPobCountry: string;
+  hSex: string; hCitizenship: string; hResidence: string;
+  hReligion: string; hCivilStatus: string;
+  hFatFirst: string; hFatMiddle: string; hFatLast: string; hFatCit: string;
+  hMotFirst: string; hMotMiddle: string; hMotLast: string; hMotCit: string;
+  hConFirst: string; hConMiddle: string; hConLast: string; hConRel: string; hConRes: string;
+  wFirst: string; wMiddle: string; wLast: string;
+  wDobDay: string; wDobMonth: string; wDobYear: string; wAge: string;
+  wPobCity: string; wPobProvince: string; wPobCountry: string;
+  wSex: string; wCitizenship: string; wResidence: string;
+  wReligion: string; wCivilStatus: string;
+  wFatFirst: string; wFatMiddle: string; wFatLast: string; wFatCit: string;
+  wMotFirst: string; wMotMiddle: string; wMotLast: string; wMotCit: string;
+  wConFirst: string; wConMiddle: string; wConLast: string; wConRel: string; wConRes: string;
+  placeVenue: string; placeCityMun: string; placeProvince: string;
+  marDay: string; marMonth: string; marYear: string; marTime: string; marAMPM: string;
+  solOfficer: string; solPosition: string; solReligion: string;
+  licNo: string; licDate: string; licAt: string; licArt34: boolean; licPD1083: boolean;
+  wit1: string; wit2: string; wit3: string; wit4: string;
+  affSolInclude: boolean; affSolOfficer: string; affSolAddr: string;
+  affSolH: string; affSolW: string; affSolCirc: string;
+  affSolDay: string; affSolMonth: string; affSolAt: string;
+  affDelInclude: boolean; affDelApplicant: string; affDelCivStat: string; affDelRes: string;
+  affDelSpouse: string; affDelMarDate: string; affDelMarPlace: string; affDelCeremony: string;
+  affDelLicNo: string; affDelLicOn: string; affDelLicAt: string;
+  affDelApCit: string; affDelSpCit: string; affDelReason: string;
+  affDelDay: string; affDelMonth: string; affDelAt: string;
+}
+
+const BLANK_MARRIAGE: MarriageFormData = {
+  province:"Camarines Norte", cityMun:"Vinzons", registryNo:"",
+  hFirst:"", hMiddle:"", hLast:"",
+  hDobDay:"", hDobMonth:"", hDobYear:"", hAge:"",
+  hPobCity:"", hPobProvince:"Camarines Norte", hPobCountry:"Philippines",
+  hSex:"Male", hCitizenship:"Filipino", hResidence:"",
+  hReligion:"Roman Catholic", hCivilStatus:"Single",
+  hFatFirst:"", hFatMiddle:"", hFatLast:"", hFatCit:"Filipino",
+  hMotFirst:"", hMotMiddle:"", hMotLast:"", hMotCit:"Filipino",
+  hConFirst:"", hConMiddle:"", hConLast:"", hConRel:"", hConRes:"",
+  wFirst:"", wMiddle:"", wLast:"",
+  wDobDay:"", wDobMonth:"", wDobYear:"", wAge:"",
+  wPobCity:"", wPobProvince:"Camarines Norte", wPobCountry:"Philippines",
+  wSex:"Female", wCitizenship:"Filipino", wResidence:"",
+  wReligion:"Roman Catholic", wCivilStatus:"Single",
+  wFatFirst:"", wFatMiddle:"", wFatLast:"", wFatCit:"Filipino",
+  wMotFirst:"", wMotMiddle:"", wMotLast:"", wMotCit:"Filipino",
+  wConFirst:"", wConMiddle:"", wConLast:"", wConRel:"", wConRes:"",
+  placeVenue:"Parroquia de San Pedro Apostol", placeCityMun:"Vinzons", placeProvince:"Camarines Norte",
+  marDay:"", marMonth:"", marYear:"", marTime:"", marAMPM:"AM",
+  solOfficer:"", solPosition:"Parish Priest", solReligion:"Roman Catholic",
+  licNo:"", licDate:"", licAt:"", licArt34:false, licPD1083:false,
+  wit1:"", wit2:"", wit3:"", wit4:"",
+  affSolInclude:false, affSolOfficer:"", affSolAddr:"", affSolH:"", affSolW:"", affSolCirc:"a",
+  affSolDay:"", affSolMonth:"", affSolAt:"",
+  affDelInclude:false, affDelApplicant:"", affDelCivStat:"Single", affDelRes:"",
+  affDelSpouse:"", affDelMarDate:"", affDelMarPlace:"", affDelCeremony:"religious",
+  affDelLicNo:"", affDelLicOn:"", affDelLicAt:"",
+  affDelApCit:"Filipino", affDelSpCit:"Filipino", affDelReason:"",
+  affDelDay:"", affDelMonth:"", affDelAt:"",
+};
 
 interface Appointment {
-  id: string; requestDate: string; parishioner: string;
-  contact: string; email: string; sacramentType: string;
+  id: string; submittedAt: string; parishioner: string;
+  contact: string; email: string; address: string; sacramentType: string;
   subjectName: string; dateOfSacrament: string; purposeOf: string;
-  status: AppStatus; referenceNo: string; scheduledDate: string; staffNotes: string;
+  status: ReqStatus;
+  prefDate: string; prefTime: string;
+  apprDate: string; apprStart: string; apprEnd: string;
+  orNo: string; orDate: string; staffNotes: string; verifiedBy: string;
+}
+interface Activity {
+  id: string; category: string; title: string; date: string;
+  start: string; end: string; allDay: boolean; location: string; notes: string;
+  blocking: boolean; status: "active"|"cancelled"; priests: string[]; cancelReason: string;
 }
 interface BookEntry {
-  id: string; sacramentType: string; subjectName: string;
-  dateOfSacrament: string; dateOfArrival: string;
-  volume: string; page: string; minister: string; remarks: string;
+  id: string; bookType: string; bookNo: string; page: string; entryNo: string;
+  dateOfArrival: string; sacramentType: string; recipient: string; dateOfSacrament: string;
+  officiant: string; status: "active"|"corrected"; remarks: string;
+  linkedRequestId: string; encodedBy: string; dateEncoded: string;
 }
-interface FuneralRecord {
-  id: string; deceasedName: string; dateOfDeath: string; dateOfBurial: string;
-  block: string; lot: string; section: string;
-  nextOfKin: string; contact: string; notes: string;
+interface Issuance {
+  id: string; certNo: string; requestId: string; bookId: string; client: string; type: string;
+  issuedBy: string; issuedAt: string; status: "issued"|"voided"; reprintCount: number;
+  lastReprintAt: string; lastReprintBy: string; lastReprintReason: string; voidReason: string;
+}
+interface StaffAccount {
+  id: string; empId: string; name: string; username: string; position: string;
+  role: UserRole; superadmin: boolean; status: "active"|"inactive"; lastLogin: string;
+}
+interface Service {
+  id: string; name: string; description: string; fee: number;
+  requiresPrinting: boolean; schedulable: boolean; requiresAppt: boolean;
+  duration: number; calCategory: string; active: boolean;
+}
+interface AuditLog {
+  id: string; at: string; actor: string; username: string; actionType: string; module: string;
+  client: string; recordType: string; recordId: string; desc: string; reason: string;
+  prev?: Record<string,string>; next?: Record<string,string>; device: string; ip: string;
+}
+interface ParishSettings {
+  parishName: string; diocese: string; address: string; phone: string; email: string; facebook: string;
+  hoursWeekday: string; hoursSat: string; hoursSun: string;
+  certSignatory: string; certSignatoryTitle: string; certFooter: string;
 }
 interface Toast { id: number; type: "success"|"error"|"info"|"warning"; message: string; }
 
-type MassType      = "For the Repose of Soul"|"Thanksgiving"|"Special Intention"|"Death Anniversary"|"Birthday"|"Healing"|"Other";
-type MassReqStatus = "pending"|"confirmed"|"celebrated";
-interface MassIntention {
-  id: string; requestDate: string; requestor: string; contact: string;
-  intention: string; massType: MassType; massDate: string; massTime: string;
-  offering: string; status: MassReqStatus; celebrant: string; notes: string;
-}
-
-type CertReqStatus = "pending"|"processing"|"ready"|"released";
-interface CertRequest {
-  id: string; requestDate: string; parishioner: string;
-  contact: string; email: string; sacramentType: string;
-  subjectName: string; dateOfSacrament: string; purposeOf: string;
-  referenceNo: string; status: CertReqStatus; staffNotes: string; claimedDate: string;
-}
-
 /* ─── SEED DATA ──────────────────────────────────────────── */
-let _aid = 8;
-const nid  = () => `SARMS-2026-${String(_aid++).padStart(3,"0")}`;
-let _crid = 4;
-const ncid = () => `CR-2026-${String(_crid++).padStart(3,"0")}`;
-let _miid = 5;
-const nmid = () => `MI-2026-${String(_miid++).padStart(3,"0")}`;
+let _aid = 12;
+const nid = () => `SARMS-2026-${String(_aid++).padStart(3,"0")}`;
+let _actid = 10;
+const nextActId = () => `ACT-${String(++_actid).padStart(3,"0")}`;
+let _bkid = 7;
+const nextBkId = () => `BK-${String(++_bkid).padStart(4,"0")}`;
+let _ciid = 3;
+let _certSeq = 142;
+let _logid = 1040;
 let _tid = 0;
 const tid = () => ++_tid;
 
+const R0 = { email:"", address:"", apprDate:"", apprStart:"", apprEnd:"", orNo:"", orDate:"", staffNotes:"", verifiedBy:"", dateOfSacrament:"" };
 const SEED_APPTS: Appointment[] = [
-  { id:"SARMS-2026-001", requestDate:"2026-08-01", parishioner:"Maria Dela Cruz",      contact:"09171234567", email:"maria@email.com",   sacramentType:"Baptismal",                subjectName:"Juan Carlos Dela Cruz",     dateOfSacrament:"2020-03-15", purposeOf:"School enrollment",          status:"completed", referenceNo:"GCash-001", scheduledDate:"2026-08-05", staffNotes:"Book 12, Pg 34" },
-  { id:"SARMS-2026-002", requestDate:"2026-08-03", parishioner:"Jose Banaga",          contact:"09281234567", email:"jose@email.com",    sacramentType:"Confirmation",             subjectName:"Jose Banaga Jr.",           dateOfSacrament:"2018-04-22", purposeOf:"Employment",                status:"verified",  referenceNo:"BDO-002",    scheduledDate:"2026-08-10", staffNotes:"" },
-  { id:"SARMS-2026-003", requestDate:"2026-08-05", parishioner:"Rosario Layug",        contact:"09351234567", email:"rosario@email.com", sacramentType:"Matrimony",                subjectName:"Eduardo & Rosario Layug",   dateOfSacrament:"2005-06-18", purposeOf:"Annulment proceedings",     status:"scheduled", referenceNo:"GCash-003",  scheduledDate:"2026-08-12", staffNotes:"Court-ordered" },
-  { id:"SARMS-2026-004", requestDate:"2026-08-07", parishioner:"Pedro Abalos",         contact:"09181234567", email:"pedro@email.com",   sacramentType:"Burial/Death",             subjectName:"Conchita Abalos",           dateOfSacrament:"2026-07-30", purposeOf:"Estate settlement",         status:"pending",   referenceNo:"",           scheduledDate:"",           staffNotes:"" },
-  { id:"SARMS-2026-005", requestDate:"2026-08-08", parishioner:"Lourdes Ramos",        contact:"09291234567", email:"lourdes@email.com", sacramentType:"First Holy Communion",     subjectName:"Ana Lourdes Ramos",         dateOfSacrament:"2019-05-10", purposeOf:"Confirmation requirement",  status:"completed", referenceNo:"GCash-005",  scheduledDate:"2026-08-09", staffNotes:"Book 8, Pg 102" },
-  { id:"SARMS-2026-006", requestDate:"2026-08-10", parishioner:"Antonio Magno",        contact:"09371234567", email:"antonio@email.com", sacramentType:"Good Standing/Membership", subjectName:"Antonio Magno",             dateOfSacrament:"",           purposeOf:"Visa application",          status:"verified",  referenceNo:"BDO-006",    scheduledDate:"2026-08-15", staffNotes:"Active parishioner" },
-  { id:"SARMS-2026-007", requestDate:"2026-08-12", parishioner:"Cynthia Obispo",       contact:"09461234567", email:"cynthia@email.com", sacramentType:"No Record",                subjectName:"Carlo Obispo",              dateOfSacrament:"",           purposeOf:"Insurance claim",           status:"pending",   referenceNo:"",           scheduledDate:"",           staffNotes:"" },
-  { id:"SARMS-2026-008", requestDate:"2026-08-14", parishioner:"Fr. Rene Tabios",      contact:"09151234567", email:"frene@parish.com",  sacramentType:"Pamisa",                   subjectName:"Lolo Felix Tabios",         dateOfSacrament:"",           purposeOf:"Death anniversary",         status:"scheduled", referenceNo:"Internal",   scheduledDate:"2026-08-18", staffNotes:"7AM Mass" },
+  { ...R0, id:"SARMS-2026-001", submittedAt:"2026-10-02T09:14", parishioner:"Maria Dela Cruz", contact:"09171234567", email:"maria.dc@email.com", address:"Brgy. 3, Vinzons", sacramentType:"Baptism", subjectName:"Juan Carlos Dela Cruz", dateOfSacrament:"2020-03-15", purposeOf:"School enrollment", status:"completed", prefDate:"2026-10-05", prefTime:"09:00", orNo:"OR-2026-004790", orDate:"2026-10-05", verifiedBy:"Maria Santos" },
+  { ...R0, id:"SARMS-2026-002", submittedAt:"2026-10-09T10:40", parishioner:"Jose Banaga", contact:"09281234567", email:"jbanaga@email.com", address:"Brgy. Calangcawan Sur", sacramentType:"Confirmation", subjectName:"Jose Banaga Jr.", dateOfSacrament:"2018-04-22", purposeOf:"Marriage requirement", status:"verified", prefDate:"2026-10-22", prefTime:"10:00", orNo:"OR-2026-004805", orDate:"2026-10-12", verifiedBy:"Maria Santos" },
+  { ...R0, id:"SARMS-2026-003", submittedAt:"2026-10-06T14:05", parishioner:"Rosario Layug", contact:"09351234567", email:"rosario.layug@email.com", address:"Brgy. 1, Vinzons", sacramentType:"Marriage", subjectName:"Eduardo & Rosario Layug", dateOfSacrament:"2005-06-18", purposeOf:"Visa application", status:"completed", prefDate:"2026-10-08", prefTime:"14:00", orNo:"OR-2026-004796", orDate:"2026-10-08", verifiedBy:"Maria Santos" },
+  { ...R0, id:"SARMS-2026-004", submittedAt:"2026-10-13T08:52", parishioner:"Pedro Abalos", contact:"09181234567", email:"pedro.abalos@email.com", address:"Brgy. Sabang", sacramentType:"Death Certificate", subjectName:"Conchita Abalos", dateOfSacrament:"2026-07-30", purposeOf:"Estate settlement", status:"verified", prefDate:"2026-10-20", prefTime:"09:00", orNo:"OR-2026-004811", orDate:"2026-10-14", verifiedBy:"Andrea Quinto" },
+  { ...R0, id:"SARMS-2026-005", submittedAt:"2026-10-17T11:20", parishioner:"Lourdes Ramos", contact:"09291234567", email:"lourdes.r@email.com", address:"Brgy. 2, Vinzons", sacramentType:"First Holy Communion", subjectName:"Ana Lourdes Ramos", dateOfSacrament:"2019-05-10", purposeOf:"Confirmation requirement", status:"pending", prefDate:"2026-10-27", prefTime:"10:00" },
+  { ...R0, id:"SARMS-2026-006", submittedAt:"2026-10-18T15:33", parishioner:"Antonio Magno", contact:"09371234567", email:"", address:"Brgy. Mangcawayan", sacramentType:"Good Standing/Membership", subjectName:"Antonio Magno", purposeOf:"Sponsorship (Ninong) requirement", status:"pending", prefDate:"2026-10-26", prefTime:"13:30" },
+  { ...R0, id:"SARMS-2026-007", submittedAt:"2026-10-11T09:02", parishioner:"Cynthia Obispo", contact:"09461234567", email:"cynthia.o@email.com", address:"Brgy. Banocboc", sacramentType:"No Record", subjectName:"Carlo Obispo", purposeOf:"Late baptism registration", status:"rejected", prefDate:"2026-10-15", prefTime:"09:00", staffNotes:"Record found in Baptismal Register Book 14 — No Record certification not applicable." },
+  { ...R0, id:"SARMS-2026-008", submittedAt:"2026-09-21T10:15", parishioner:"Juan Dela Cruz", contact:"09175550123", email:"juan.delacruz@email.com", address:"Purok 4, Brgy. Pinagtigasan", sacramentType:"Marriage", subjectName:"Juan Dela Cruz & Ana Santos", purposeOf:"Wedding Mass", status:"scheduled", prefDate:"2026-11-07", prefTime:"09:00", apprDate:"2026-11-07", apprStart:"10:00", apprEnd:"11:30", orNo:"OR-2026-004821", orDate:"2026-10-21", verifiedBy:"Maria Santos" },
+  { ...R0, id:"SARMS-2026-009", submittedAt:"2026-10-20T08:11", parishioner:"Ramon Villareal", contact:"09193337788", email:"rvillareal@email.com", address:"Brgy. Guinacutan", sacramentType:"Baptism", subjectName:"Gabriel Villareal", purposeOf:"Infant baptism", status:"pending", prefDate:"2026-10-24", prefTime:"08:30" },
+  { ...R0, id:"SARMS-2026-010", submittedAt:"2026-10-03T13:47", parishioner:"Elena Pascual", contact:"09224448899", email:"", address:"Brgy. Aguit-it", sacramentType:"Baptism", subjectName:"Mika Pascual", purposeOf:"Infant baptism", status:"cancelled", prefDate:"2026-10-10", prefTime:"10:00", staffNotes:"Cancelled at client's request — family relocating." },
+  { ...R0, id:"SARMS-2026-011", submittedAt:"2026-10-07T16:02", parishioner:"Grace Llanes", contact:"09087776655", email:"grace.llanes@email.com", address:"Brgy. 3, Vinzons", sacramentType:"Death Certificate", subjectName:"Felix Llanes", dateOfSacrament:"2025-08-15", purposeOf:"SSS claim", status:"completed", prefDate:"2026-10-09", prefTime:"10:00", orNo:"OR-2026-004799", orDate:"2026-10-09", verifiedBy:"Maria Santos" },
+  { ...R0, id:"SARMS-2026-012", submittedAt:"2026-10-19T09:25", parishioner:"Teresita Abasola", contact:"09162229090", email:"", address:"Brgy. Sabang", sacramentType:"Funeral Mass", subjectName:"Leonardo Abasola", purposeOf:"Funeral Mass for the late Leonardo Abasola", status:"verified", prefDate:"2026-10-29", prefTime:"14:00", orNo:"OR-2026-004818", orDate:"2026-10-19", verifiedBy:"Maria Santos" },
 ];
 
-const MASS_TYPES: MassType[] = [
-  "For the Repose of Soul","Thanksgiving","Special Intention",
-  "Death Anniversary","Birthday","Healing","Other",
+const A0 = { start:"", end:"", allDay:false, location:"Parroquia de San Pedro Apostol", notes:"", blocking:true, status:"active" as const, priests:[] as string[], cancelReason:"" };
+const SEED_ACTIVITIES: Activity[] = [
+  { ...A0, id:"ACT-001", category:"Funeral Mass", title:"Funeral Mass — Late Conchita Abalos", date:"2026-10-23", start:"14:00", end:"15:00", priests:[PRIESTS[0]] },
+  { ...A0, id:"ACT-002", category:"Holy Mass", title:"Anticipated Sunday Mass", date:"2026-10-24", start:"08:00", end:"09:00", priests:[PRIESTS[1]] },
+  { ...A0, id:"ACT-003", category:"Holy Mass", title:"Sunday Morning Mass", date:"2026-10-25", start:"06:00", end:"07:00", priests:[PRIESTS[0]] },
+  { ...A0, id:"ACT-004", category:"Barangay Mass", title:"Brgy. Calangcawan Norte Mass", date:"2026-10-28", start:"16:00", end:"17:00", location:"Calangcawan Norte Chapel", blocking:false, priests:[PRIESTS[1]] },
+  { ...A0, id:"ACT-005", category:"Closed Office Day", title:"Annual Staff Recollection", date:"2026-10-30", allDay:true, location:"Off-site", notes:"Parish office closed" },
+  { ...A0, id:"ACT-006", category:"Wedding Mass", title:"Mendoza–Lagman Wedding", date:"2026-10-31", start:"10:00", end:"11:30", status:"cancelled", cancelReason:"Couple moved the wedding to December." },
+  { ...A0, id:"ACT-007", category:"Holiday", title:"All Saints' Day", date:"2026-11-01", allDay:true, notes:"Masses at 6:00 AM and 4:00 PM only" },
+  { ...A0, id:"ACT-008", category:"Closed Office Day", title:"All Souls' Day — Office Closed", date:"2026-11-02", allDay:true },
+  { ...A0, id:"ACT-009", category:"Fiesta Mass", title:"Fiesta of San Isidro Labrador — Concelebration", date:"2026-11-05", start:"09:00", end:"11:00", location:"San Isidro Parish, Labo · Diocese of Daet", priests:[PRIESTS[0], PRIESTS[2]], notes:"PdSPA priests concelebrating at host parish" },
+  { ...A0, id:"ACT-011", category:"Parish Activity", title:"Parish Youth Ministry Assembly", date:"2026-10-24", start:"13:00", end:"16:00", location:"Parish Hall", blocking:false, notes:"Open to all parish youth organizations" },
+  { ...A0, id:"ACT-010", category:"Barangay Mass", title:"Brgy. Sabang Pintakasi Mass", date:"2026-11-12", start:"17:00", end:"18:00", location:"Sabang Chapel", blocking:false, priests:[PRIESTS[1]] },
 ];
 
-const MASS_TIMES = ["5:00 AM","6:00 AM","7:00 AM","8:00 AM","9:00 AM","10:00 AM","12:00 PM","5:00 PM","6:00 PM"];
-
-const SEED_MASS: MassIntention[] = [
-  { id:"MI-2026-001", requestDate:"2026-08-14", requestor:"Fr. Rene Tabios",  contact:"09151234567", intention:"Lolo Felix Tabios",    massType:"Death Anniversary",      massDate:"2026-08-18", massTime:"7:00 AM",  offering:"500",  status:"confirmed",  celebrant:"Fr. Rene Tabios",  notes:"7AM Mass" },
-  { id:"MI-2026-002", requestDate:"2026-08-15", requestor:"Maria Dela Cruz",  contact:"09171234567", intention:"Carlos Dela Cruz",      massType:"Birthday",               massDate:"2026-08-20", massTime:"6:00 AM",  offering:"300",  status:"confirmed",  celebrant:"",                 notes:"" },
-  { id:"MI-2026-003", requestDate:"2026-08-16", requestor:"Lourdes Ramos",    contact:"09291234567", intention:"For healing of Ana R.", massType:"Healing",                massDate:"2026-08-21", massTime:"6:00 AM",  offering:"300",  status:"pending",    celebrant:"",                 notes:"" },
-  { id:"MI-2026-004", requestDate:"2026-08-17", requestor:"Jose Banaga",      contact:"09281234567", intention:"Ignacio Banaga",        massType:"For the Repose of Soul", massDate:"2026-08-22", massTime:"5:00 AM",  offering:"500",  status:"pending",    celebrant:"",                 notes:"" },
-];
-
-const SEED_CERT_REQUESTS: CertRequest[] = [
-  { id:"CR-2026-001", requestDate:"2026-08-02", parishioner:"Maria Dela Cruz",  contact:"09171234567", email:"maria@email.com",   sacramentType:"Baptismal",                subjectName:"Juan Carlos Dela Cruz",   dateOfSacrament:"2020-03-15", purposeOf:"School enrollment",         referenceNo:"GCash-20260802-001", status:"released",   staffNotes:"Book 12, Pg 34",   claimedDate:"2026-08-06" },
-  { id:"CR-2026-002", requestDate:"2026-08-09", parishioner:"Lourdes Ramos",    contact:"09291234567", email:"lourdes@email.com", sacramentType:"First Holy Communion",     subjectName:"Ana Lourdes Ramos",       dateOfSacrament:"2019-05-10", purposeOf:"Confirmation requirement",  referenceNo:"GCash-20260809-002", status:"ready",      staffNotes:"Book 8, Pg 102",   claimedDate:"" },
-  { id:"CR-2026-003", requestDate:"2026-08-13", parishioner:"Pedro Abalos",     contact:"09181234567", email:"pedro@email.com",   sacramentType:"Burial/Death",             subjectName:"Conchita Abalos",         dateOfSacrament:"2026-07-30", purposeOf:"Estate settlement",         referenceNo:"",                   status:"processing", staffNotes:"Verifying records", claimedDate:"" },
-];
-
+const B0 = { status:"active" as const, linkedRequestId:"", remarks:"" };
 const SEED_BOOKS: BookEntry[] = [
-  { id:"BK-001", sacramentType:"Baptismal",            subjectName:"Juan Carlos Dela Cruz",  dateOfSacrament:"2020-03-15", dateOfArrival:"2026-08-01", volume:"12", page:"34",  minister:"Fr. Rene Tabios",  remarks:"Parents: Carlos & Maria Dela Cruz" },
-  { id:"BK-002", sacramentType:"Confirmation",          subjectName:"Jose Banaga Jr.",        dateOfSacrament:"2018-04-22", dateOfArrival:"2026-08-03", volume:"9",  page:"88",  minister:"Bishop Pedro Arigo",remarks:"Sponsor: Atty. Ramon Banaga" },
-  { id:"BK-003", sacramentType:"First Holy Communion",  subjectName:"Ana Lourdes Ramos",      dateOfSacrament:"2019-05-10", dateOfArrival:"2026-08-08", volume:"8",  page:"102", minister:"Fr. Rene Tabios",  remarks:"Batch 2019" },
-  { id:"BK-004", sacramentType:"Matrimony",             subjectName:"Eduardo & Rosario Layug",dateOfSacrament:"2005-06-18", dateOfArrival:"2026-08-05", volume:"6",  page:"57",  minister:"Fr. Domingo Cruz", remarks:"Sponsors: see page 58" },
-  { id:"BK-005", sacramentType:"Burial/Death",          subjectName:"Conchita Abalos",        dateOfSacrament:"2026-07-30", dateOfArrival:"2026-08-07", volume:"15", page:"4",   minister:"Fr. Rene Tabios",  remarks:"Interred at PdSPA Campo Santo" },
+  { ...B0, id:"BK-0001", bookType:"Baptismal Register", bookNo:"12", page:"34", entryNo:"118", dateOfArrival:"2020-03-15", sacramentType:"Baptism", recipient:"Juan Carlos Dela Cruz", dateOfSacrament:"2020-03-15", officiant:"Rev. Fr. Rene B. Tabios", remarks:"Parents: Carlos & Maria Dela Cruz", linkedRequestId:"SARMS-2026-001", encodedBy:"Maria Santos", dateEncoded:"2026-10-05" },
+  { ...B0, id:"BK-0002", bookType:"Confirmation Register", bookNo:"9", page:"88", entryNo:"412", dateOfArrival:"2018-04-22", sacramentType:"Confirmation", recipient:"Jose Banaga Jr.", dateOfSacrament:"2018-04-22", officiant:"Most Rev. Rex Andrew C. Alarcon, D.D.", remarks:"Sponsor: Atty. Ramon Banaga", linkedRequestId:"SARMS-2026-002", encodedBy:"Maria Santos", dateEncoded:"2026-10-12" },
+  { ...B0, id:"BK-0003", bookType:"First Communion Register", bookNo:"8", page:"102", entryNo:"57", dateOfArrival:"2019-05-10", sacramentType:"First Holy Communion", recipient:"Ana Lourdes Ramos", dateOfSacrament:"2019-05-10", officiant:"Rev. Fr. Rene B. Tabios", remarks:"Batch 2019", encodedBy:"Andrea Quinto", dateEncoded:"2026-09-28" },
+  { ...B0, id:"BK-0004", bookType:"Marriage Register", bookNo:"6", page:"57", entryNo:"23", dateOfArrival:"2005-06-18", sacramentType:"Marriage", recipient:"Eduardo & Rosario Layug", dateOfSacrament:"2005-06-18", officiant:"Rev. Fr. Domingo S. Cruz", status:"corrected", remarks:"Bride's middle name corrected per PSA copy", linkedRequestId:"SARMS-2026-003", encodedBy:"Maria Santos", dateEncoded:"2026-10-08" },
+  { ...B0, id:"BK-0005", bookType:"Register of Dead", bookNo:"15", page:"4", entryNo:"9", dateOfArrival:"2026-07-30", sacramentType:"Death Certificate", recipient:"Conchita Abalos", dateOfSacrament:"2026-07-28", officiant:"Rev. Fr. Rene B. Tabios", linkedRequestId:"SARMS-2026-004", encodedBy:"Andrea Quinto", dateEncoded:"2026-10-14" },
+  { ...B0, id:"BK-0006", bookType:"Register of Dead", bookNo:"14", page:"61", entryNo:"33", dateOfArrival:"2025-08-18", sacramentType:"Death Certificate", recipient:"Felix Llanes", dateOfSacrament:"2025-08-15", officiant:"Rev. Fr. Domingo S. Cruz", linkedRequestId:"SARMS-2026-011", encodedBy:"Maria Santos", dateEncoded:"2026-10-09" },
+  { ...B0, id:"BK-0007", bookType:"Baptismal Register", bookNo:"3", page:"211", entryNo:"640", dateOfArrival:"1987-01-11", sacramentType:"Baptism", recipient:"Remedios Villanueva", dateOfSacrament:"1987-01-11", officiant:"Rev. Fr. Ignacio Abante", remarks:"Pre-existing register record (no SARMS request)", encodedBy:"Maria Santos", dateEncoded:"2026-09-15" },
 ];
 
-const SEED_FUNERAL: FuneralRecord[] = [
-  { id:"FN-001", deceasedName:"Conchita Abalos",    dateOfDeath:"2026-07-28", dateOfBurial:"2026-07-30", block:"A", lot:"12", section:"Nicho",  nextOfKin:"Pedro Abalos",      contact:"09181234567", notes:"" },
-  { id:"FN-002", deceasedName:"Felix Tabios",        dateOfDeath:"2025-08-15", dateOfBurial:"2025-08-18", block:"B", lot:"3",  section:"Lawn",   nextOfKin:"Fr. Rene Tabios",   contact:"09151234567", notes:"Perpetual care" },
-  { id:"FN-003", deceasedName:"Remedios Villanueva", dateOfDeath:"2024-11-02", dateOfBurial:"2024-11-05", block:"A", lot:"44", section:"Nicho",  nextOfKin:"Carmen Villanueva", contact:"09261234567", notes:"" },
-  { id:"FN-004", deceasedName:"Ignacio Banaga",      dateOfDeath:"2024-03-20", dateOfBurial:"2024-03-22", block:"C", lot:"7",  section:"Ground", nextOfKin:"Jose Banaga",       contact:"09281234567", notes:"" },
+const SEED_ISSUANCE: Issuance[] = [
+  { id:"CI-0001", certNo:"PdSPA-BAP-2026-0139", requestId:"SARMS-2026-001", bookId:"BK-0001", client:"Maria Dela Cruz", type:"Baptism", issuedBy:"Maria Santos", issuedAt:"2026-10-05T10:12", status:"issued", reprintCount:1, lastReprintAt:"2026-10-06T08:40", lastReprintBy:"Maria Santos", lastReprintReason:"Printer jam — first copy smudged", voidReason:"" },
+  { id:"CI-0002", certNo:"PdSPA-MAR-2026-0140", requestId:"SARMS-2026-003", bookId:"BK-0004", client:"Rosario Layug", type:"Marriage", issuedBy:"Maria Santos", issuedAt:"2026-10-08T15:02", status:"voided", reprintCount:0, lastReprintAt:"", lastReprintBy:"", lastReprintReason:"", voidReason:"Bride's middle name misspelled; register corrected and certificate re-issued" },
+  { id:"CI-0003", certNo:"PdSPA-DTH-2026-0141", requestId:"SARMS-2026-011", bookId:"BK-0006", client:"Grace Llanes", type:"Death Certificate", issuedBy:"Maria Santos", issuedAt:"2026-10-09T11:30", status:"issued", reprintCount:0, lastReprintAt:"", lastReprintBy:"", lastReprintReason:"", voidReason:"" },
 ];
+
+const SEED_STAFF: StaffAccount[] = [
+  { id:"U-01", empId:"PDSPA-EMP-001", name:"Jose Reyes",    username:"jreyes",    position:"Parish Office Administrator", role:"admin", superadmin:true,  status:"active",   lastLogin:"2026-10-21T08:02" },
+  { id:"U-02", empId:"PDSPA-EMP-002", name:"Andrea Quinto", username:"aquinto",   position:"Parish Secretary",            role:"admin", superadmin:false, status:"active",   lastLogin:"2026-10-20T13:15" },
+  { id:"U-03", empId:"PDSPA-EMP-003", name:"Maria Santos",  username:"msantos",   position:"Records Clerk",               role:"staff", superadmin:false, status:"active",   lastLogin:"2026-10-21T08:47" },
+  { id:"U-04", empId:"PDSPA-EMP-004", name:"Liza Bautista", username:"lbautista", position:"Office Assistant",            role:"staff", superadmin:false, status:"inactive", lastLogin:"2026-08-29T16:20" },
+];
+/* Demo-only credential check. Never surfaced in UI or audit history. */
+const DEMO_CREDENTIALS: Record<string, string> = { jreyes:"admin123", aquinto:"admin123", msantos:"staff123", lbautista:"staff123" };
+
+const SEED_SERVICES: Service[] = [
+  { id:"SV-01", name:"Baptism",                  description:"Infant/child baptism and Baptismal Certificate", fee:300,  requiresPrinting:true,  schedulable:true,  requiresAppt:true,  duration:60, calCategory:"Holy Mass",    active:true },
+  { id:"SV-02", name:"Confirmation",             description:"Confirmation Certificate issuance",             fee:150,  requiresPrinting:true,  schedulable:false, requiresAppt:false, duration:0,  calCategory:"",             active:true },
+  { id:"SV-03", name:"First Holy Communion",     description:"Certification — awaiting parish-approved layout", fee:100, requiresPrinting:false, schedulable:false, requiresAppt:false, duration:0,  calCategory:"",             active:true },
+  { id:"SV-04", name:"Marriage",                 description:"Wedding Mass scheduling and Certificate of Marriage (Form 97)", fee:3500, requiresPrinting:true, schedulable:true, requiresAppt:true, duration:90, calCategory:"Wedding Mass", active:true },
+  { id:"SV-05", name:"Funeral Mass",             description:"Funeral Mass scheduling",                       fee:1000, requiresPrinting:false, schedulable:true,  requiresAppt:true,  duration:60, calCategory:"Funeral Mass", active:true },
+  { id:"SV-06", name:"Death Certificate",        description:"Parish Death Certificate from the Register of Dead", fee:150, requiresPrinting:true, schedulable:false, requiresAppt:false, duration:0, calCategory:"",           active:true },
+  { id:"SV-07", name:"No Record",                description:"No Record certification — awaiting parish-approved layout", fee:100, requiresPrinting:false, schedulable:false, requiresAppt:false, duration:0, calCategory:"", active:true },
+  { id:"SV-08", name:"Good Standing/Membership", description:"Good Standing certification — awaiting parish-approved layout", fee:100, requiresPrinting:false, schedulable:false, requiresAppt:false, duration:0, calCategory:"", active:true },
+];
+
+const DEVICE = "SARMS Desktop 2.4 · Windows 11 · PARISH-OFFICE-PC1";
+const L0 = { reason:"", device:DEVICE, ip:"192.168.1.24", client:"", recordType:"", recordId:"" };
+const SEED_LOGS: AuditLog[] = [
+  { ...L0, id:"LOG-1028", at:"2026-10-21T08:02:11", actor:"Jose Reyes", username:"jreyes", actionType:"Login", module:"Authentication", desc:"Admin Jose Reyes signed in to SARMS at 8:02 AM.", ip:"192.168.1.10", device:"SARMS Desktop 2.4 · Windows 11 · ADMIN-PC" },
+  { ...L0, id:"LOG-1029", at:"2026-10-21T08:44:52", actor:"", username:"msantoss", actionType:"Failed Login", module:"Authentication", desc:"Failed sign-in attempt for username \"msantoss\" at 8:44 AM (no matching account).", recordType:"Account" },
+  { ...L0, id:"LOG-1030", at:"2026-10-21T08:47:03", actor:"Maria Santos", username:"msantos", actionType:"Login", module:"Authentication", desc:"Maria Santos signed in to SARMS at 8:47 AM." },
+  { ...L0, id:"LOG-1031", at:"2026-10-21T11:38:20", actor:"Maria Santos", username:"msantos", actionType:"Certificate Printed", module:"Certificates", client:"Juan Dela Cruz", recordType:"Request", recordId:"SARMS-2026-008", desc:"Maria Santos printed the Marriage Form for client Juan Dela Cruz at 11:38 AM." },
+  { ...L0, id:"LOG-1032", at:"2026-10-21T11:42:05", actor:"Maria Santos", username:"msantos", actionType:"Request Approved", module:"Requests", client:"Juan Dela Cruz", recordType:"Request", recordId:"SARMS-2026-008", desc:"Maria Santos approved the appointment request of Juan Dela Cruz at 11:42 AM.", prev:{ Status:"Verified", "Approved Schedule":"—" }, next:{ Status:"Scheduled", "Approved Schedule":"Nov 7, 2026 · 10:00 AM – 11:30 AM" } },
+  { ...L0, id:"LOG-1033", at:"2026-10-21T11:46:40", actor:"Maria Santos", username:"msantos", actionType:"OR Recorded", module:"Official Receipt", client:"Juan Dela Cruz", recordType:"Request", recordId:"SARMS-2026-008", desc:"Maria Santos recorded OR No. OR-2026-004821 for Juan Dela Cruz at 11:46 AM.", next:{ "OR No.":"OR-2026-004821", "Receipt Date":"Oct 21, 2026" } },
+  { ...L0, id:"LOG-1034", at:"2026-10-21T12:02:18", actor:"Jose Reyes", username:"jreyes", actionType:"Account Deactivated", module:"Staff Accounts", client:"Liza Bautista", recordType:"Staff Account", recordId:"PDSPA-EMP-004", desc:"Admin Jose Reyes deactivated the Staff account of Liza Bautista at 12:02 PM.", reason:"Contract ended August 31, 2026", prev:{ Status:"Active" }, next:{ Status:"Inactive" }, ip:"192.168.1.10", device:"SARMS Desktop 2.4 · Windows 11 · ADMIN-PC" },
+  { ...L0, id:"LOG-1035", at:"2026-10-21T12:05:44", actor:"Jose Reyes", username:"jreyes", actionType:"Password Reset", module:"Staff Accounts", client:"Maria Santos", recordType:"Staff Account", recordId:"PDSPA-EMP-003", desc:"Admin Jose Reyes reset the password of Staff account Maria Santos at 12:05 PM.", reason:"Requested by user — forgotten password", ip:"192.168.1.10", device:"SARMS Desktop 2.4 · Windows 11 · ADMIN-PC" },
+  { ...L0, id:"LOG-1036", at:"2026-10-20T10:31:09", actor:"Andrea Quinto", username:"aquinto", actionType:"Book Entity Corrected", module:"Book Entity", client:"Eduardo & Rosario Layug", recordType:"Book Entity", recordId:"BK-0004", desc:"Admin Andrea Quinto corrected Book Entity BK-0004 (Marriage Register, Book 6) at 10:31 AM.", reason:"Bride's middle name corrected per PSA copy", prev:{ Recipient:"Eduardo & Rosario Layog" }, next:{ Recipient:"Eduardo & Rosario Layug", Status:"Corrected" } },
+  { ...L0, id:"LOG-1037", at:"2026-10-20T14:12:55", actor:"Maria Santos", username:"msantos", actionType:"Activity Cancelled", module:"Calendar", client:"", recordType:"Calendar Activity", recordId:"ACT-006", desc:"Maria Santos cancelled the activity \"Mendoza–Lagman Wedding\" (Oct 31, 2026) at 2:12 PM.", reason:"Couple moved the wedding to December.", prev:{ Status:"Active" }, next:{ Status:"Cancelled" } },
+  { ...L0, id:"LOG-1038", at:"2026-10-19T09:40:30", actor:"Maria Santos", username:"msantos", actionType:"Request Verified", module:"Requests", client:"Teresita Abasola", recordType:"Request", recordId:"SARMS-2026-012", desc:"Maria Santos verified the Funeral Mass request of Teresita Abasola at 9:40 AM." },
+  { ...L0, id:"LOG-1039", at:"2026-10-19T16:05:12", actor:"Andrea Quinto", username:"aquinto", actionType:"Report Exported", module:"Reports", recordType:"Report", recordId:"Official Receipt Transactions Report", desc:"Admin Andrea Quinto exported the Official Receipt Transactions Report (Oct 1 – Oct 19, 2026) at 4:05 PM." },
+  { ...L0, id:"LOG-1040", at:"2026-10-08T15:20:47", actor:"Andrea Quinto", username:"aquinto", actionType:"Certificate Voided", module:"Certificate Issuance", client:"Rosario Layug", recordType:"Certificate Issuance", recordId:"PdSPA-MAR-2026-0140", desc:"Admin Andrea Quinto voided certificate PdSPA-MAR-2026-0140 for Rosario Layug at 3:20 PM.", reason:"Bride's middle name misspelled", prev:{ Status:"Issued" }, next:{ Status:"Voided" } },
+];
+
+const SEED_SETTINGS: ParishSettings = {
+  parishName:"Parroquia de San Pedro Apostol", diocese:"Diocese of Daet",
+  address:"Anacleto Guinto Street, Brgy. 3, Vinzons, Camarines Norte 4603",
+  phone:"(054) 731-0142 · 0917 812 4410", email:"pdspa.vinzons@gmail.com", facebook:"facebook.com/PdSPAVinzons",
+  hoursWeekday:"8:00 AM – 12:00 NN, 1:00 PM – 5:00 PM", hoursSat:"8:00 AM – 12:00 NN", hoursSun:"Closed (Masses only)",
+  certSignatory:"Rev. Fr. Rene B. Tabios", certSignatoryTitle:"Parish Priest", certFooter:"N.B. Any mark or alteration of any kind invalidates this certificate.",
+};
 
 /* ─── HELPERS ────────────────────────────────────────────── */
 function fmt(iso: string) {
   if (!iso) return "—";
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-PH", { month:"long", day:"numeric", year:"numeric" });
+  return new Date(iso.slice(0,10) + "T00:00:00").toLocaleDateString("en-PH", { month:"long", day:"numeric", year:"numeric" });
 }
 function fmtShort(iso: string) {
   if (!iso) return "—";
-  return new Date(iso + "T00:00:00").toLocaleDateString("en-PH", { month:"short", day:"numeric", year:"numeric" });
+  return new Date(iso.slice(0,10) + "T00:00:00").toLocaleDateString("en-PH", { month:"short", day:"numeric", year:"numeric" });
 }
-function todayISO() { return new Date().toISOString().split("T")[0]; }
+const pad = (n: number) => String(n).padStart(2,"0");
+function nowStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function todayISO() { return nowStamp().slice(0,10); }
+function fmtTime(t: string) {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return `${((h + 11) % 12) + 1}:${pad(m)} ${h >= 12 ? "PM" : "AM"}`;
+}
+function fmtDT(s: string) { return s ? `${fmtShort(s)} · ${fmtTime(s.slice(11,16))}` : "—"; }
+function fmtRange(start: string, end: string, allDay?: boolean) {
+  if (allDay) return "All day";
+  if (!start) return "—";
+  return end ? `${fmtTime(start)} – ${fmtTime(end)}` : fmtTime(start);
+}
+const toMin = (t: string) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const addMin = (t: string, mins: number) => { const v = Math.min(toMin(t) + mins, 23 * 60 + 59); return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };
+const peso = (n: number) => `₱${n.toLocaleString("en-PH", { minimumFractionDigits:2 })}`;
 
-const CERT_STATUS_CFG: Record<CertReqStatus, { label: string; col: string; bg: string }> = {
-  pending:    { label:"Pending",    col:"#92400E", bg:"#FEF3C7" },
-  processing: { label:"Processing", col:"#1E40AF", bg:"#DBEAFE" },
-  ready:      { label:"Ready",      col:"#065F46", bg:"#D1FAE5" },
-  released:   { label:"Released",   col:"#4B5563", bg:"#F3F4F6" },
-};
-
-function CertBadge({ status }: { status: CertReqStatus }) {
-  const { label, col, bg } = CERT_STATUS_CFG[status];
-  return <span style={{ padding:"2px 8px", borderRadius:4, fontSize:12, fontWeight:600,
-    background:bg, color:col, letterSpacing:".02em", whiteSpace:"nowrap" }}>{label}</span>;
+interface Conflict { hard: boolean; label: string; detail: string; }
+/* Range-based conflict check: start + end, all-day, blocking activities, scheduled appointments, Closed Office Days */
+function findConflicts(date: string, start: string, end: string, activities: Activity[], appts: Appointment[], exclude: { reqId?: string; actId?: string } = {}): Conflict[] {
+  if (!date) return [];
+  const s = start ? toMin(start) : 0, e = end ? toMin(end) : 24 * 60;
+  const overlaps = (s2: number, e2: number) => s < e2 && s2 < e;
+  const out: Conflict[] = [];
+  activities.forEach(a => {
+    if (a.status !== "active" || a.date !== date || a.id === exclude.actId) return;
+    const as = a.allDay ? 0 : toMin(a.start), ae = a.allDay ? 24 * 60 : (a.end ? toMin(a.end) : as + 60);
+    if (a.category === "Closed Office Day")
+      out.push({ hard:true, label:"Closed Office Day", detail:`${a.title} — the parish office is closed. Appointments cannot be scheduled on this date.` });
+    else if (a.blocking && overlaps(as, ae))
+      out.push({ hard:false, label:a.category, detail:`${a.title} · ${fmtRange(a.start, a.end, a.allDay)}` });
+  });
+  appts.forEach(r => {
+    if (r.status !== "scheduled" || r.apprDate !== date || r.id === exclude.reqId) return;
+    if (overlaps(toMin(r.apprStart), toMin(r.apprEnd)))
+      out.push({ hard:false, label:"Approved appointment", detail:`${r.id} · ${r.sacramentType} — ${r.subjectName} · ${fmtRange(r.apprStart, r.apprEnd)}` });
+  });
+  return out;
 }
 
-const STATUS_CFG: Record<AppStatus, { label: string; col: string; bg: string }> = {
+function downloadCSV(name: string, rows: (string|number)[][]) {
+  const csv = rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type:"text/csv" }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/* ─── APP CONTEXT ────────────────────────────────────────── */
+type LogInput = Omit<AuditLog, "id"|"at"|"actor"|"username"|"device"|"ip"|"reason"|"client"|"recordType"|"recordId"> & Partial<Pick<AuditLog,"reason"|"client"|"recordType"|"recordId"|"actor"|"username">>;
+interface Ctx {
+  auth: Auth;
+  push: (t: Toast["type"], m: string) => void;
+  log: (e: LogInput) => void;
+  go: (v: View, f?: Focus) => void;
+}
+const AppCtx = createContext<Ctx | null>(null);
+const useApp = () => useContext(AppCtx)!;
+/* "Maria Santos" / "Admin Jose Reyes" prefix used in readable audit sentences */
+const who = (a: Auth) => a.role === "admin" ? `Admin ${a.name}` : a.name;
+const clock = () => fmtTime(nowStamp().slice(11,16));
+
+/* ─── STATUS PILLS ───────────────────────────────────────── */
+type PillCfg = { label: string; col: string; bg: string };
+const STATUS_CFG: Record<ReqStatus, PillCfg> = {
   pending:   { label:"Pending",   col:"#92400E", bg:"#FEF3C7" },
   verified:  { label:"Verified",  col:"#1E40AF", bg:"#DBEAFE" },
   scheduled: { label:"Scheduled", col:"#065F46", bg:"#D1FAE5" },
+  rejected:  { label:"Rejected",  col:"#991B1B", bg:"#FEE2E2" },
   completed: { label:"Completed", col:"#166534", bg:"#F0FDF4" },
-  cancelled: { label:"Cancelled", col:"#991B1B", bg:"#FEF2F2" },
+  cancelled: { label:"Cancelled", col:"#4B5563", bg:"#F3F4F6" },
+};
+const REQ_STATUSES = Object.keys(STATUS_CFG) as ReqStatus[];
+const MISC_CFG: Record<string, PillCfg> = {
+  active:    { label:"Active",    col:"#166534", bg:"#F0FDF4" },
+  inactive:  { label:"Inactive",  col:"#4B5563", bg:"#F3F4F6" },
+  corrected: { label:"Corrected", col:"#92400E", bg:"#FEF3C7" },
+  cancelled: { label:"Cancelled", col:"#4B5563", bg:"#F3F4F6" },
+  issued:    { label:"Issued",    col:"#065F46", bg:"#D1FAE5" },
+  voided:    { label:"Voided",    col:"#991B1B", bg:"#FEE2E2" },
 };
 
-/* ─── SMALL COMPONENTS ───────────────────────────────────── */
-function Badge({ status }: { status: AppStatus }) {
-  const { label, col, bg } = STATUS_CFG[status];
+function Pill({ cfg }: { cfg: PillCfg }) {
+  return <span style={{ padding:"3px 10px", borderRadius:99, fontSize:14, fontWeight:600, display:"inline-flex", alignItems:"center", gap:6,
+    background:cfg.bg, color:cfg.col, whiteSpace:"nowrap" }}><span aria-hidden style={{ width:7, height:7, borderRadius:99, background:cfg.col }}/>{cfg.label}</span>;
+}
+function Badge({ status }: { status: ReqStatus }) { return <Pill cfg={STATUS_CFG[status]}/>; }
+function SPill({ s }: { s: string }) { return <Pill cfg={MISC_CFG[s]}/>; }
+function CatTag({ cat, faded }: { cat: string; faded?: boolean }) {
+  const c = ACTIVITY_CATS[cat] ?? { col:T.sub, light:T.bg };
+  return <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:600, whiteSpace:"nowrap",
+    background:c.light, color:c.col, opacity: faded ? .55 : 1 }}>{cat}</span>;
+}
+function RoleTag({ a }: { a: { role: UserRole; superadmin: boolean } }) {
   return (
-    <span style={{ padding:"2px 8px", borderRadius:4, fontSize:12, fontWeight:600,
-      background:bg, color:col, letterSpacing:".02em", whiteSpace:"nowrap" }}>
-      {label}
+    <span style={{ display:"inline-flex", gap:4 }}>
+      <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:600,
+        background: a.role === "admin" ? T.priLight : T.bg, color: a.role === "admin" ? T.priHov : T.sub,
+        border:`1px solid ${a.role === "admin" ? T.borderMd : T.border}` }}>{a.role === "admin" ? "Admin" : "Staff"}</span>
+      {a.superadmin && <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:700, background:"#1A1400", color:"#F5D77A" }}>Superadmin</span>}
     </span>
   );
 }
 
+function Err({ m }: { m?: string }) { return m ? <p role="alert" style={{ fontSize:15, fontWeight:500, color:T.red, margin:"6px 0 0", display:"flex", alignItems:"center", gap:6 }}><AlertTriangle size={16}/>{m}</p> : null; }
+
+function Toggle({ on, set, label, hint, disabled }:
+  { on: boolean; set: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }) {
+  return (
+    <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .55 : 1 }}>
+      <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => set(!on)}
+        style={{ width:46, height:26, borderRadius:99, border:"none", flexShrink:0, marginTop:1, position:"relative",
+          background: on ? T.primary : T.borderMd, cursor:"inherit", transition:"background .15s", padding:0 }}>
+        <span style={{ position:"absolute", top:3, left: on ? 23 : 3, width:20, height:20, borderRadius:99,
+          background:"#fff", boxShadow:"0 1px 2px rgba(0,0,0,.2)", transition:"left .15s" }}/>
+      </button>
+      <span>
+        <span style={{ display:"block", fontSize:16, fontWeight:600, color:T.text }}>{label} <span style={{ fontSize:13, fontWeight:700, marginLeft:6, color: on ? T.green : T.muted }}>{on ? "ON" : "OFF"}</span></span>
+        {hint && <span style={{ display:"block", fontSize:14, color:T.muted, marginTop:1 }}>{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
+function PageHead({ title, sub, right }: { title: string; sub?: string; right?: React.ReactNode }) {
+  return (
+    <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:22, gap:16, flexWrap:"wrap" }}>
+      <div>
+        <h1 style={{ fontSize:26, fontWeight:700, color:T.text, margin:0, letterSpacing:"-.01em" }}>{title}</h1>
+        {sub && <p style={{ fontSize:16, color:T.sub, marginTop:6, marginBottom:0, maxWidth:760, lineHeight:1.5 }}>{sub}</p>}
+      </div>
+      {right && <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>{right}</div>}
+    </div>
+  );
+}
+
+function KV({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"170px 1fr", gap:12, padding:"9px 0", borderBottom:`1px solid ${T.border}` }}>
+      <span style={{ fontSize:15, fontWeight:600, color:T.sub, paddingTop:1 }}>{k}</span>
+      <span style={{ fontSize:16, color:T.text, fontFamily: mono ? "ui-monospace, monospace" : undefined, wordBreak:"break-word" }}>{v || "—"}</span>
+    </div>
+  );
+}
+
+function Notice({ tone = "info", children }: { tone?: "info"|"warn"|"error"|"ok"; children: React.ReactNode }) {
+  const c = { info:[T.priLight, T.borderMd, T.sub], warn:[T.amberL, T.amberB, T.amber], error:[T.redL, T.redB, T.red], ok:[T.greenL, T.greenB, "#166534"] }[tone];
+  const Icon = { info:Info, warn:AlertTriangle, error:XCircle, ok:CheckCircle2 }[tone];
+  return <div role={tone === "error" ? "alert" : "status"} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"12px 14px", borderRadius:8, background:c[0], border:`1px solid ${c[1]}`, borderLeft:`4px solid ${c[2]}`, color:c[2], fontSize:15, lineHeight:1.55 }}><Icon size={19} style={{ flexShrink:0, marginTop:1 }}/><div style={{ flex:1 }}>{children}</div></div>;
+}
+
+function Drawer({ open, title, sub, onClose, children, footer }:
+  { open: boolean; title: string; sub?: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && open) onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position:"fixed", inset:0, zIndex:250, background:"rgba(26,20,0,.28)", display:"flex", justifyContent:"flex-end" }}>
+      <div style={{ width:560, maxWidth:"100%", height:"100%", background:"#fff", borderLeft:`1px solid ${T.border}`,
+        boxShadow:"-8px 0 32px rgba(0,0,0,.12)", display:"flex", flexDirection:"column" }}>
+        <div style={{ padding:"18px 22px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+          <div>
+            <div style={{ fontSize:20, fontWeight:700, color:T.text }}>{title}</div>
+            {sub && <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>{sub}</div>}
+          </div>
+          <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="sarms-close"><X size={18}/> Close</button>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:"16px 22px" }}>{children}</div>
+        {footer && <div style={{ padding:"14px 22px", borderTop:`1px solid ${T.border}`, display:"flex", justifyContent:"flex-end", gap:8, background:T.bg }}>{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* Generic confirm dialog with an optional required reason */
+function ConfirmModal({ open, title, message, confirmLabel, danger, reasonLabel, reasonRequired, onClose, onConfirm, children }:
+  { open: boolean; title: string; message: React.ReactNode; confirmLabel: string; danger?: boolean;
+    reasonLabel?: string; reasonRequired?: boolean; onClose: () => void; onConfirm: (reason: string) => void; children?: React.ReactNode }) {
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => { if (open) { setReason(""); setErr(""); } }, [open]);
+  return (
+    <Modal open={open} title={title} onClose={onClose}
+      footer={<>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn variant={danger ? "danger" : "primary"} onClick={() => {
+          if (reasonRequired && !reason.trim()) { setErr("A reason is required for this action."); return; }
+          onConfirm(reason.trim());
+        }}>{confirmLabel}</Btn>
+      </>}>
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div style={{ fontSize:16, color:T.sub, lineHeight:1.55 }}>{message}</div>
+        {children}
+        {reasonLabel && (
+          <div>
+            <FL req={reasonRequired}>{reasonLabel}</FL>
+            <FT rows={3} value={reason} onChange={e => { setReason(e.target.value); setErr(""); }} placeholder="Recorded in the Activity Log"/>
+            <Err m={err}/>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+const chipBtn = (active: boolean): React.CSSProperties => ({
+  padding:"8px 14px", minHeight:40, fontSize:15, fontWeight: active ? 700 : 500, borderRadius:99, cursor:"pointer",
+  border:`${active ? 2 : 1}px solid ${active ? T.primary : T.borderMd}`, background: active ? T.priLight : T.surface, color: active ? T.priHov : T.sub,
+  display:"inline-flex", alignItems:"center", gap:6,
+});
+const linkBtn: React.CSSProperties = { fontSize:15, color:T.priHov, background:"none", border:"none", cursor:"pointer", padding:"4px 0", fontWeight:600, textDecoration:"underline", textUnderlineOffset:3 };
+const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 };
+const g3: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 };
+const secLabel: React.CSSProperties = { fontSize:17, fontWeight:700, color:T.text, margin:"10px 0 4px", paddingBottom:6, borderBottom:`2px solid ${T.priLight}` };
 function TypeTag({ type }: { type: string }) {
   const s = SACR[type];
   return (
-    <span style={{ padding:"2px 8px", borderRadius:4, fontSize:12, fontWeight:600,
+    <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:600,
       background: s?.light ?? "#F3F4F6", color: s?.col ?? T.sub, whiteSpace:"nowrap" }}>
       {type}
     </span>
@@ -185,35 +550,33 @@ function TypeTag({ type }: { type: string }) {
 function Btn({ variant = "primary", size = "md", children, style, ...rest }:
   { variant?: "primary"|"outline"|"ghost"|"danger"; size?: "sm"|"md";
     style?: React.CSSProperties; children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const p = size === "sm" ? "4px 10px" : "7px 14px";
-  const fs = size === "sm" ? 12 : 13;
+  const p = size === "sm" ? "6px 12px" : "10px 18px";
+  const fs = size === "sm" ? 15 : 16;
   const vs: Record<string, React.CSSProperties> = {
-    primary: { background:T.primary, color:"#fff",    border:`1px solid ${T.primary}` },
-    outline: { background:"#fff",    color:T.primary, border:`1px solid ${T.primary}` },
-    ghost:   { background:"transparent", color:T.sub,      border:`1px solid ${T.border}` },
+    primary: { background:T.priHov, color:"#fff",    border:`1px solid ${T.priHov}` },
+    outline: { background:"#fff",    color:T.priHov, border:`1.5px solid ${T.primary}` },
+    ghost:   { background:"#fff", color:T.text,     border:`1px solid ${T.borderMd}` },
     danger:  { background:T.red,     color:"#fff",          border:`1px solid ${T.red}` },
   };
   return (
-    <button {...rest} style={{ padding:p, fontSize:fs, fontWeight:600, fontFamily:"inherit",
-      borderRadius:6, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:5,
-      whiteSpace:"nowrap", transition:"opacity .15s", opacity:rest.disabled?.55:1,
-      ...vs[variant], ...style }}
-      onMouseEnter={e => (e.currentTarget.style.opacity = ".85")}
-      onMouseLeave={e => (e.currentTarget.style.opacity = "1")}>
+    <button {...rest} className={`sarms-btn sarms-btn-${variant} ${rest.className ?? ""}`} style={{ padding:p, fontSize:fs, fontWeight:600, fontFamily:"inherit",
+      minHeight: size === "sm" ? 36 : 44, borderRadius:8, cursor:rest.disabled?"not-allowed":"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:7,
+      whiteSpace:"nowrap", transition:"background .15s, box-shadow .15s, filter .15s", opacity:rest.disabled?.5:1,
+      ...vs[variant], ...style }}>
       {children}
     </button>
   );
 }
 
 const inp: React.CSSProperties = {
-  width:"100%", padding:"7px 10px", border:`1px solid ${T.border}`,
-  borderRadius:6, fontSize:14, fontFamily:"inherit", color:T.text,
+  width:"100%", padding:"10px 12px", minHeight:44, border:`1px solid ${T.borderMd}`,
+  borderRadius:8, fontSize:16, fontFamily:"inherit", color:T.text,
   background:"#fff", outline:"none",
 };
 function FI({ ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...rest} style={{ ...inp, ...rest.style }}
-    onFocus={e => (e.currentTarget.style.borderColor = T.primary)}
-    onBlur={e => (e.currentTarget.style.borderColor = T.border)}/>;
+    onFocus={e => { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.boxShadow = `0 0 0 3px ${T.priLight}`; rest.onFocus?.(e as never); }}
+    onBlur={e => { e.currentTarget.style.borderColor = T.borderMd; e.currentTarget.style.boxShadow = "none"; rest.onBlur?.(e as never); }}/>;
 }
 function FS({ children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
@@ -226,14 +589,14 @@ function FS({ children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement>
 }
 function FT({ ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...rest} style={{ ...inp, resize:"vertical", minHeight:72 }}
-    onFocus={e => (e.currentTarget.style.borderColor = T.primary)}
-    onBlur={e => (e.currentTarget.style.borderColor = T.border)}/>;
+    onFocus={e => { e.currentTarget.style.borderColor = T.primary; e.currentTarget.style.boxShadow = `0 0 0 3px ${T.priLight}`; rest.onFocus?.(e as never); }}
+    onBlur={e => { e.currentTarget.style.borderColor = T.borderMd; e.currentTarget.style.boxShadow = "none"; rest.onBlur?.(e as never); }}/>;
 }
 function FL({ children, req, htmlFor }: { children: React.ReactNode; req?: boolean; htmlFor?: string }) {
   return (
-    <label htmlFor={htmlFor} style={{ display:"block", fontSize:13, fontWeight:600,
-      color:T.sub, marginBottom:4, textTransform:"uppercase", letterSpacing:".04em" }}>
-      {children}{req && <span style={{ color:T.red }}> *</span>}
+    <label htmlFor={htmlFor} style={{ display:"block", fontSize:15, fontWeight:600,
+      color:T.text, marginBottom:6 }}>
+      {children}{req && <span style={{ color:T.red, fontWeight:500, fontSize:14 }}> * required</span>}
     </label>
   );
 }
@@ -243,15 +606,15 @@ function Divider() { return <div style={{ height:1, background:T.border, margin:
 /* ─── CARD ───────────────────────────────────────────────── */
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return <div style={{ background:T.surface, border:`1px solid ${T.border}`,
-    borderRadius:8, overflow:"hidden", ...style }}>{children}</div>;
+    borderRadius:12, overflow:"hidden", boxShadow:"0 1px 2px rgba(26,20,0,.05)", ...style }}>{children}</div>;
 }
 function CardHead({ title, sub, right }: { title: React.ReactNode; sub?: string; right?: React.ReactNode }) {
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-      padding:"16px 22px", borderBottom:`1px solid ${T.border}`, gap:20, flexWrap:"wrap" }}>
+      padding:"16px 20px", borderBottom:`1px solid ${T.border}`, gap:12, flexWrap:"wrap" }}>
       <div>
-        <div style={{ fontSize:14, fontWeight:700, color:T.text }}>{title}</div>
-        {sub && <div style={{ fontSize:12, color:T.muted, marginTop:2 }}>{sub}</div>}
+        <div style={{ fontSize:18, fontWeight:700, color:T.text }}>{title}</div>
+        {sub && <div style={{ fontSize:15, color:T.sub, marginTop:3 }}>{sub}</div>}
       </div>
       {right}
     </div>
@@ -264,7 +627,7 @@ function useToasts() {
   const push = useCallback((type: Toast["type"], message: string) => {
     const id = tid();
     setToasts(t => [...t, { id, type, message }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 7000);
   }, []);
   const dismiss = useCallback((id: number) => setToasts(t => t.filter(x => x.id !== id)), []);
   return { toasts, push, dismiss };
@@ -276,15 +639,16 @@ const TOAST_COL: Record<Toast["type"], string> = {
 
 function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   return (
-    <div style={{ position:"fixed", bottom:20, right:20, zIndex:400,
-      display:"flex", flexDirection:"column", gap:12, maxWidth:360 }}>
+    <div style={{ position:"fixed", top:76, right:24, zIndex:400,
+      display:"flex", flexDirection:"column", gap:10, maxWidth:420 }}>
       {toasts.map(t => (
-        <div key={t.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"16px 22px",
-          background:"#fff", border:`1px solid ${T.border}`, borderLeft:`3px solid ${TOAST_COL[t.type]}`,
-          borderRadius:6, boxShadow:"0 4px 12px rgba(0,0,0,.08)", fontSize:14, color:T.text }}>
+        <div key={t.id} role="status" style={{ display:"flex", alignItems:"center", gap:12, padding:"14px 16px",
+          background:"#fff", border:`1px solid ${T.border}`, borderLeft:`5px solid ${TOAST_COL[t.type]}`,
+          borderRadius:10, boxShadow:"0 10px 28px rgba(26,20,0,.14)", fontSize:16, fontWeight:500, color:T.text }}>
+          {(() => { const I = { success:CheckCircle2, error:XCircle, info:Info, warning:AlertTriangle }[t.type]; return <I size={22} color={TOAST_COL[t.type]} style={{ flexShrink:0 }}/>; })()}
           <span style={{ flex:1 }}>{t.message}</span>
-          <button onClick={() => dismiss(t.id)} style={{ background:"none", border:"none",
-            cursor:"pointer", color:T.muted, fontSize:16, lineHeight:1, padding:0 }}>x</button>
+          <button onClick={() => dismiss(t.id)} aria-label="Dismiss" style={{ background:"none", border:"none",
+            cursor:"pointer", color:T.muted, lineHeight:0, padding:4 }}><X size={18}/></button>
         </div>
       ))}
     </div>
@@ -305,19 +669,18 @@ function Modal({ open, title, onClose, children, footer, maxW = 500 }:
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position:"fixed", inset:0, zIndex:300, background:"rgba(0,0,0,.4)",
-        display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div style={{ background:"#fff", borderRadius:8, border:`1px solid ${T.border}`,
+        display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div role="dialog" aria-modal="true" aria-label={title} style={{ background:"#fff", borderRadius:14, border:`1px solid ${T.border}`,
         width:"100%", maxWidth:maxW, boxShadow:"0 8px 32px rgba(0,0,0,.12)", maxHeight:"90vh", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
           padding:"16px 22px", borderBottom:`1px solid ${T.border}` }}>
-          <span style={{ fontWeight:700, fontSize:15, color:T.text }}>{title}</span>
-          <button onClick={onClose} style={{ background:"none", border:"none",
-            cursor:"pointer", fontSize:20, color:T.muted, lineHeight:1, padding:0 }}>x</button>
+          <span style={{ fontWeight:700, fontSize:20, color:T.text }}>{title}</span>
+          <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="sarms-close"><X size={18}/> Close</button>
         </div>
-        <div style={{ padding:20, overflowY:"auto", flex:1 }}>{children}</div>
+        <div style={{ padding:"20px 22px", overflowY:"auto", flex:1 }}>{children}</div>
         {footer && (
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:12,
-            padding:"10px 16px", borderTop:`1px solid ${T.border}` }}>{footer}</div>
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:10,
+            padding:"14px 22px", borderTop:`1px solid ${T.border}`, background:T.bg, borderRadius:"0 0 14px 14px" }}>{footer}</div>
         )}
       </div>
     </div>
@@ -326,16 +689,16 @@ function Modal({ open, title, onClose, children, footer, maxW = 500 }:
 
 /* ─── TABLE HELPERS ──────────────────────────────────────── */
 const TH: React.CSSProperties = {
-  padding:"10px 16px", textAlign:"left", fontSize:11, fontWeight:700,
-  color:T.sub, textTransform:"uppercase", letterSpacing:".05em",
-  borderBottom:`1px solid ${T.border}`, background:T.bg, whiteSpace:"nowrap",
+  padding:"12px 14px", textAlign:"left", fontSize:15, fontWeight:700,
+  color:T.text, borderBottom:`2px solid ${T.borderMd}`, background:"#FBF6E4", whiteSpace:"nowrap",
+  position:"sticky", top:0, zIndex:1,
 };
-const TD: React.CSSProperties = { padding:"11px 16px", fontSize:14, color:T.text, verticalAlign:"middle" };
+const TD: React.CSSProperties = { padding:"13px 14px", fontSize:16, lineHeight:1.4, color:T.text, verticalAlign:"middle" };
 
 function SortTh({ label, field, sf, sd, sort }: { label: string; field: string; sf: unknown; sd: string; sort: () => void }) {
   const active = sf === field;
   return (
-    <th style={{ ...TH, cursor:"pointer", userSelect:"none" }} onClick={sort}>
+    <th style={{ ...TH, cursor:"pointer", userSelect:"none" }} onClick={sort} title="Click to sort" aria-sort={active ? (sd === "asc" ? "ascending" : "descending") : "none"}>
       {label} <span style={{ opacity: active ? 1 : .4 }}>{active ? (sd === "asc" ? "↑" : "↓") : "↕"}</span>
     </th>
   );
@@ -344,127 +707,25 @@ function SortTh({ label, field, sf, sd, sort }: { label: string; field: string; 
 function Paginator({ page, total, set }: { page: number; total: number; set: (p: number) => void }) {
   if (total <= 1) return null;
   return (
-    <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-      <button onClick={() => set(Math.max(1, page - 1))} disabled={page === 1}
-        style={{ minWidth:26, height:26, border:`1px solid ${T.border}`, borderRadius:4,
-          background:"#fff", cursor:page===1?"not-allowed":"pointer", opacity:page===1?.4:1, fontSize:13 }}>‹</button>
+    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+      <span style={{ fontSize:15, color:T.sub, marginRight:8 }}>Page <b style={{ color:T.text }}>{page}</b> of {total}</span>
+      <button aria-label="Previous page" onClick={() => set(Math.max(1, page - 1))} disabled={page === 1}
+        style={{ minWidth:40, height:40, border:`1px solid ${T.border}`, borderRadius:8,
+          background:"#fff", cursor:page===1?"not-allowed":"pointer", opacity:page===1?.4:1, fontSize:15, display:"inline-flex", alignItems:"center", justifyContent:"center" }}><ChevronLeft size={18}/></button>
       {Array.from({ length: total }, (_, i) => i + 1)
         .filter(p => p === 1 || p === total || Math.abs(p - page) <= 1)
         .map((p, i, arr) => (
           <span key={p} style={{ display:"contents" }}>
-            {i > 0 && arr[i - 1] !== p - 1 && <span style={{ color:T.muted, fontSize:13 }}>…</span>}
+            {i > 0 && arr[i - 1] !== p - 1 && <span style={{ color:T.muted, fontSize:15 }}>…</span>}
             <button onClick={() => set(p)}
-              style={{ minWidth:26, height:26, border:`1px solid ${p===page?T.primary:T.border}`,
+              style={{ minWidth:40, height:40, border:`1px solid ${p===page?T.primary:T.border}`,
                 borderRadius:4, background:p===page?T.primary:"#fff",
-                color:p===page?"#fff":T.sub, cursor:"pointer", fontSize:13, fontWeight:p===page?700:400 }}>{p}</button>
+                color:p===page?"#fff":T.sub, cursor:"pointer", fontSize:15, fontWeight:p===page?700:400 }}>{p}</button>
           </span>
         ))}
-      <button onClick={() => set(Math.min(total, page + 1))} disabled={page === total}
-        style={{ minWidth:26, height:26, border:`1px solid ${T.border}`, borderRadius:4,
-          background:"#fff", cursor:page===total?"not-allowed":"pointer", opacity:page===total?.4:1, fontSize:13 }}>›</button>
-    </div>
-  );
-}
-
-/* ─── SIMPLE BAR CHART (pure SVG, no Recharts key conflicts) ─ */
-type BarDatum = { name: string; count: number; col: string };
-function SimpleBarChart({ data, height = 240, layout = "vertical" as "vertical" | "horizontal" }: {
-  data: BarDatum[]; height?: number; layout?: "vertical" | "horizontal";
-}) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
-
-  if (!data.length) return <p style={{ textAlign:"center", color:T.muted, padding:24, fontSize:14 }}>No data.</p>;
-
-  if (layout === "horizontal") {
-    /* Horizontal: categories on Y axis, bars extend right */
-    const PAD = { top:8, bottom:8, left:92, right:16 };
-    const maxVal = Math.max(...data.map(d => d.count), 1);
-    const rowH = Math.floor((height - PAD.top - PAD.bottom) / data.length);
-    const barH = Math.max(6, Math.min(20, rowH - 8));
-    const chartW = 400;
-    const innerW = chartW - PAD.left - PAD.right;
-
-    return (
-      <div style={{ position:"relative" }}>
-        <svg width="100%" viewBox={`0 0 ${chartW} ${height}`} style={{ overflow:"visible" }}>
-          {/* grid lines */}
-          {[0, .25, .5, .75, 1].map(t => {
-            const x = PAD.left + t * innerW;
-            return <line key={t} x1={x} x2={x} y1={PAD.top} y2={height - PAD.bottom} stroke={T.border} strokeDasharray="3 3"/>;
-          })}
-          {data.map((d, i) => {
-            const y = PAD.top + i * rowH + (rowH - barH) / 2;
-            const w = (d.count / maxVal) * innerW;
-            return (
-              <g key={i} onMouseEnter={e => { setHovered(i); setTip({ x: e.clientX, y: e.clientY }); }}
-                 onMouseMove={e => setTip({ x: e.clientX, y: e.clientY })}
-                 onMouseLeave={() => { setHovered(null); setTip(null); }} style={{ cursor:"default" }}>
-                <text x={PAD.left - 6} y={y + barH / 2 + 4} textAnchor="end" fontSize={11} fill={T.muted}>{d.name}</text>
-                <rect x={PAD.left} y={y} width={Math.max(0, w)} height={barH}
-                  fill={d.col} rx={3} opacity={hovered === null || hovered === i ? 1 : 0.45}/>
-                {w > 20 && <text x={PAD.left + w + 4} y={y + barH / 2 + 4} fontSize={11} fill={T.sub}>{d.count}</text>}
-              </g>
-            );
-          })}
-        </svg>
-        {hovered !== null && tip && (
-          <div style={{ position:"fixed", left:tip.x+12, top:tip.y-28, background:"#fff", border:`1px solid ${T.border}`,
-            borderRadius:6, padding:"4px 10px", fontSize:13, pointerEvents:"none", zIndex:9999, whiteSpace:"nowrap",
-            boxShadow:"0 2px 8px rgba(0,0,0,.1)" }}>
-            <b style={{ color:T.text }}>{data[hovered].name}</b>: {data[hovered].count}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  /* Vertical: categories on X axis, bars go up */
-  const PAD = { top:8, bottom:36, left:32, right:8 };
-  const maxVal = Math.max(...data.map(d => d.count), 1);
-  const chartW = 480;
-  const innerW = chartW - PAD.left - PAD.right;
-  const innerH = height - PAD.top - PAD.bottom;
-  const colW = innerW / data.length;
-  const barW = Math.max(8, Math.min(40, colW * 0.55));
-
-  return (
-    <div style={{ position:"relative" }}>
-      <svg width="100%" viewBox={`0 0 ${chartW} ${height}`} style={{ overflow:"visible" }}>
-        {/* horizontal grid lines */}
-        {[0, .25, .5, .75, 1].map(t => {
-          const y = PAD.top + t * innerH;
-          return (
-            <g key={t}>
-              <line x1={PAD.left} x2={chartW - PAD.right} y1={y} y2={y} stroke={T.border} strokeDasharray="3 3"/>
-              <text x={PAD.left - 4} y={y + 4} textAnchor="end" fontSize={11} fill={T.muted}>
-                {Math.round(maxVal * (1 - t))}
-              </text>
-            </g>
-          );
-        })}
-        {data.map((d, i) => {
-          const barH = (d.count / maxVal) * innerH;
-          const x = PAD.left + i * colW + (colW - barW) / 2;
-          const y = PAD.top + innerH - barH;
-          return (
-            <g key={i} onMouseEnter={e => { setHovered(i); setTip({ x: e.clientX, y: e.clientY }); }}
-               onMouseMove={e => setTip({ x: e.clientX, y: e.clientY })}
-               onMouseLeave={() => { setHovered(null); setTip(null); }} style={{ cursor:"default" }}>
-              <rect x={x} y={y} width={barW} height={Math.max(0, barH)}
-                fill={d.col} rx={3} opacity={hovered === null || hovered === i ? 1 : 0.45}/>
-              <text x={x + barW / 2} y={height - PAD.bottom + 14} textAnchor="middle" fontSize={11} fill={T.muted}>{d.name}</text>
-            </g>
-          );
-        })}
-      </svg>
-      {hovered !== null && tip && (
-        <div style={{ position:"fixed", left:tip.x+12, top:tip.y-28, background:"#fff", border:`1px solid ${T.border}`,
-          borderRadius:6, padding:"4px 10px", fontSize:13, pointerEvents:"none", zIndex:9999, whiteSpace:"nowrap",
-          boxShadow:"0 2px 8px rgba(0,0,0,.1)" }}>
-          <b style={{ color:T.text }}>{data[hovered].name}</b>: {data[hovered].count}
-        </div>
-      )}
+      <button aria-label="Next page" onClick={() => set(Math.min(total, page + 1))} disabled={page === total}
+        style={{ minWidth:40, height:40, border:`1px solid ${T.border}`, borderRadius:4,
+          background:"#fff", cursor:page===total?"not-allowed":"pointer", opacity:page===total?.4:1, fontSize:15, display:"inline-flex", alignItems:"center", justifyContent:"center" }}><ChevronRight size={18}/></button>
     </div>
   );
 }
@@ -492,122 +753,773 @@ function useTable<R extends Record<string, unknown>>(data: R[], searchKeys: (key
 }
 
 /* ─── CERT PRINT ─────────────────────────────────────────── */
-function generateCertHTML(appt: Appointment, logoB64: string): string {
-  const s = SACR[appt.sacramentType] ?? SACR["No Record"];
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${appt.id}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
-    .cert{width:700px;border:1.5px solid #E4E7EC;border-radius:8px;overflow:hidden}
-    .cert-top{background:#1A1400;padding:28px 40px;text-align:center;color:#fff;position:relative}
-    .cert-top img{width:64px;height:64px;object-fit:contain;margin-bottom:10px}
-    .cert-top h1{font-size:1.05rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-    .cert-top p{font-size:.72rem;opacity:.7;margin-top:3px}
-    .cert-body{padding:36px 48px}
-    .cert-type{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:${s.col};margin-bottom:8px}
-    .cert-title{font-size:1.5rem;font-weight:800;color:#101828;margin-bottom:24px}
-    .cert-text{font-size:.88rem;color:#475467;line-height:1.8;margin-bottom:24px}
-    .cert-name{font-size:1.25rem;font-weight:700;color:#101828;border-bottom:2px solid #E4E7EC;padding-bottom:8px;margin:12px 0 16px}
-    .cert-meta{display:flex;gap:32px;background:#F7F8FA;border:1px solid #E4E7EC;border-radius:6px;padding:14px 18px;margin-bottom:28px}
-    .cert-mi .l{font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;color:#98A2B3;margin-bottom:3px}
-    .cert-mi .v{font-size:.82rem;font-weight:600;color:#101828}
-    .cert-sigs{display:flex;justify-content:space-around;padding-top:24px;border-top:1px solid #E4E7EC}
-    .sig-line{border-top:1px solid #101828;padding-top:6px;margin:28px 16px 0;text-align:center}
-    .sig-name{font-size:.75rem;font-weight:700;color:#101828}
-    .sig-role{font-size:.65rem;color:#98A2B3}
-    .cert-no{font-size:.6rem;color:#98A2B3;text-align:center;margin-top:16px}
-    @media print{body{padding:0}@page{size:A4 portrait;margin:0}.cert{width:100%;border:none;border-radius:0}}
-  </style></head><body>
-  <div class="cert">
-    <div class="cert-top">
-      <img src="${logoB64}" alt="Parish Seal">
-      <h1>Parroquia de San Pedro Apostol</h1>
-      <p>Diocese of Daet &bull; Vinzons, Camarines Norte &bull; Est. 1611</p>
+function openBlobPrint(html: string, width = 960, height = 820): boolean {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, "_blank", `width=${width},height=${height}`);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return !!w;
+}
+function generateCertHTML(appt: Appointment, logoB64: string, mf?: MarriageFormData, form97Imgs?: { p1: string; p2: string }): string {
+  const issued = new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  const logoTag = `<img src="${logoB64}" alt="Parish Seal" style="width:70px;height:70px;object-fit:contain">`;
+  const ln = (w = 180) => `<span style="border-bottom:1px solid #333;display:inline-block;min-width:${w}px;vertical-align:bottom">&nbsp;</span>`;
+  const parts = appt.subjectName.split("&").map(s => s.trim());
+
+  const base = (title: string, body: string, sigLabel: string) => `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Inter',sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+      .cert{width:680px;padding:28px 36px;border:4px double #1A1400}
+      .cert-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+      .cert-center{flex:1;text-align:center;padding:0 10px}
+      .cert-center .diocese{font-size:11px;letter-spacing:.04em;color:#555;margin-bottom:2px}
+      .cert-center .parish{font-size:15px;font-weight:800;color:#1A1400;letter-spacing:.02em;line-height:1.2}
+      .cert-center .address{font-size:10px;color:#666;margin-top:3px}
+      .cert-title{text-align:center;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#1A1400;margin:14px 0 18px;border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:8px 0}
+      .cert-body{font-size:12.5px;line-height:1.9;color:#1A1400}
+      .cert-body p{margin-bottom:10px}
+      .cert-body strong{font-weight:700}
+      .cert-footer{margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end}
+      .sig-block .line{border-top:1px solid #333;padding-top:5px;margin-top:32px;width:220px}
+      .sig-block .name{font-size:11px;font-weight:700;text-align:center}
+      .nb{font-size:9.5px;color:#666;text-align:center;margin-top:16px;font-style:italic}
+      .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+      .two-col .head{font-weight:700;text-decoration:underline;margin-bottom:6px;font-size:13px}
+      @media print{body{padding:0}@page{size:A4 portrait;margin:14mm}}
+    </style></head><body>
+    <div class="cert">
+      <div class="cert-header">
+        <div>${logoTag}</div>
+        <div class="cert-center">
+          <div class="diocese">Diocese of Daet</div>
+          <div class="parish">PARROQUIA DE SAN PEDRO APOSTOL</div>
+          <div class="address">Anacleto Guinto Street, Brgy. 3, Vinzons, Camarines Norte</div>
+        </div>
+        <div style="width:70px">${logoTag}</div>
+      </div>
+      <div class="cert-title">${title}</div>
+      <div class="cert-body">${body}</div>
+      <div class="nb">N.B. Any mark or alteration of any kind invalidates this certificate.</div>
+      <div class="cert-footer">
+        <div style="font-size:11px;color:#555">by: ___________________________</div>
+        ${logoTag}
+        <div class="sig-block"><div class="line"><div class="name">${sigLabel}</div></div></div>
+      </div>
     </div>
-    <div class="cert-body">
-      <div class="cert-type">Official Parish Certificate</div>
-      <div class="cert-title">Certificate of ${appt.sacramentType === "Pamisa" ? "Mass Intention" : appt.sacramentType}</div>
-      <p style="font-size:.8rem;color:#98A2B3;margin-bottom:6px">This is to certify that</p>
-      <div class="cert-name">${appt.subjectName}</div>
-      <div class="cert-text">
+    <script>window.onload=()=>window.print()<\/script></body></html>`;
+
+  switch (appt.sacramentType) {
+    case "Baptism":
+      return base("Certificate of Baptism", `
+        <p style="text-align:center;font-size:15px;font-weight:700">${appt.subjectName}</p>
+        <p>Child of ${ln(190)} (Father's Name) &nbsp; Of ${ln(160)} (Place of Birth)</p>
+        <p>And ${ln(210)} (Mother's Name) &nbsp; Of ${ln(160)} (Place of Birth)</p>
+        <p>Was Born in ${ln(200)} &nbsp; Legitimacy ${ln(120)}</p>
+        <p>On the ${ln(60)} day of ${ln(140)} In the year ${ln(80)}</p>
+        <p style="text-align:center;font-style:italic;font-weight:700;font-size:14px;margin:8px 0">Was Solemnly Baptized</p>
+        <p>On the ${ln(60)} day of ${ln(140)} in the year ${ln(80)}</p>
+        <p>By the Rev. ${ln(240)}</p>
+        <p>The sponsors being ${ln(190)} and ${ln(190)}</p>
+        <p>As appear on Baptismal register no. ${ln(60)} Page no. ${ln(60)} Entry no. ${ln(60)}</p>
+        <p>This Certificate was given for the purpose of ${ln(240)}</p>
+        <p>Date Issued: <strong>${issued}</strong></p>`, "Parish Priest");
+
+    case "Marriage": {
+      const m = mf ?? BLANK_MARRIAGE;
+      const p1 = form97Imgs?.p1 ?? "";
+      const p2 = form97Imgs?.p2 ?? "";
+      const FD = "position:absolute;font-family:Arial,Helvetica,sans-serif;font-weight:bold;font-size:9pt;color:#000;line-height:1.1;white-space:nowrap;overflow:hidden;z-index:2";
+      const CK = "position:absolute;font-family:Arial,Helvetica,sans-serif;font-size:12pt;color:#000;font-weight:bold;z-index:2;line-height:1";
+      // f: render a data value — all styles inline, no class dependency
+      const f = (v: string, top: string, left: string, maxW = "auto") =>
+        v ? `<span style="${FD};top:${top};left:${left};max-width:${maxW}">${v}</span>` : "";
+      // ck: render a checkmark — all styles inline
+      const ck = (b: boolean, top: string, left: string) =>
+        b ? `<span style="${CK};top:${top};left:${left}">&#10003;</span>` : "";
+      const pg = (src: string) =>
+        `<div style="position:relative;width:8.5in;height:13in;overflow:hidden;page-break-after:always">` +
+        `<img src="${src}" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;display:block">`;
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>*{box-sizing:border-box;margin:0;padding:0}body{margin:0;padding:0}@page{size:8.5in 13in;margin:0}@media print{body{margin:0}}</style>
+</head><body>
+
+${pg(p1)}
+  <!-- Province / Registry No / City-Municipality -->
+  ${f(m.province,    "8.0%", "10%","35%")}
+  ${f(m.registryNo,  "8.0%", "74%","16%")}
+  ${f(m.cityMun,     "10.2%","13%","38%")}
+
+  <!-- Item 1: Husband Name -->
+  ${f(m.hFirst,  "15.1%","10%","31%")}
+  ${f(m.hMiddle, "16.8%","10%","31%")}
+  ${f(m.hLast,   "18.5%","10%","31%")}
+  <!-- Item 1: Wife Name -->
+  ${f(m.wFirst,  "15.1%","51.5%","46%")}
+  ${f(m.wMiddle, "16.8%","51.5%","46%")}
+  ${f(m.wLast,   "18.5%","51.5%","46%")}
+
+  <!-- Item 2: Date of Birth + Age - Husband -->
+  ${f(m.hDobDay,   "20.7%","10%",  "5%")}
+  ${f(m.hDobMonth, "20.7%","18%",  "9%")}
+  ${f(m.hDobYear,  "20.7%","30%",  "6%")}
+  ${f(m.hAge,      "20.7%","41%",  "5%")}
+  <!-- Item 2: Wife -->
+  ${f(m.wDobDay,   "20.7%","51.5%","5%")}
+  ${f(m.wDobMonth, "20.7%","60%",  "9%")}
+  ${f(m.wDobYear,  "20.7%","71%",  "6%")}
+  ${f(m.wAge,      "20.7%","81%",  "5%")}
+
+  <!-- Item 3: Place of Birth - Husband -->
+  ${f(m.hPobCity,     "22.9%","10%","11%")}
+  ${f(m.hPobProvince, "22.9%","22%","9%")}
+  ${f(m.hPobCountry,  "22.9%","33%","9%")}
+  <!-- Item 3: Wife -->
+  ${f(m.wPobCity,     "22.9%","51.5%","11%")}
+  ${f(m.wPobProvince, "22.9%","64%", "9%")}
+  ${f(m.wPobCountry,  "22.9%","75%", "9%")}
+
+  <!-- Item 4: Sex / Citizenship - Husband -->
+  ${f(m.hSex,        "25.5%","10%","10%")}
+  ${f(m.hCitizenship,"25.5%","22%","20%")}
+  <!-- Item 4: Wife -->
+  ${f(m.wSex,        "25.5%","51.5%","10%")}
+  ${f(m.wCitizenship,"25.5%","63%", "20%")}
+
+  <!-- Item 5: Residence -->
+  ${f(m.hResidence,"28.5%","10%","38%")}
+  ${f(m.wResidence,"28.5%","51.5%","46%")}
+
+  <!-- Item 6: Religion -->
+  ${f(m.hReligion,"34.5%","10%","37%")}
+  ${f(m.wReligion,"34.5%","51.5%","46%")}
+
+  <!-- Item 7: Civil Status -->
+  ${f(m.hCivilStatus,"37.5%","10%","37%")}
+  ${f(m.wCivilStatus,"37.5%","51.5%","46%")}
+
+  <!-- Item 8: Father's Name - Husband -->
+  ${f(m.hFatFirst,  "40%","10%","11%")}
+  ${f(m.hFatMiddle, "40%","22%","10%")}
+  ${f(m.hFatLast,   "40%","34%","10%")}
+  <!-- Item 8: Wife -->
+  ${f(m.wFatFirst,  "40%","51.5%","11%")}
+  ${f(m.wFatMiddle, "40%","64%", "10%")}
+  ${f(m.wFatLast,   "40%","75%", "10%")}
+
+  <!-- Item 9: Father Citizenship -->
+  ${f(m.hFatCit,"43.3%","10%","37%")}
+  ${f(m.wFatCit,"43.3%","51.5%","46%")}
+
+  <!-- Item 10: Mother's Name - Husband -->
+  ${f(m.hMotFirst,  "46.1%","10%","11%")}
+  ${f(m.hMotMiddle, "46.1%","22%","10%")}
+  ${f(m.hMotLast,   "46.1%","34%","10%")}
+  <!-- Item 10: Wife -->
+  ${f(m.wMotFirst,  "46.1%","51.5%","11%")}
+  ${f(m.wMotMiddle, "46.1%","64%", "10%")}
+  ${f(m.wMotLast,   "46.1%","75%", "10%")}
+
+  <!-- Item 11: Mother Citizenship -->
+  ${f(m.hMotCit,"49%","10%","37%")}
+  ${f(m.wMotCit,"49%","51.5%","46%")}
+
+  <!-- Item 12: Consent Giver - Husband -->
+  ${f(m.hConFirst,  "51.8%","10%","11%")}
+  ${f(m.hConMiddle, "51.8%","22%","10%")}
+  ${f(m.hConLast,   "51.8%","34%","10%")}
+  <!-- Item 12: Wife -->
+  ${f(m.wConFirst,  "51.8%","51.5%","11%")}
+  ${f(m.wConMiddle, "51.8%","64%", "10%")}
+  ${f(m.wConLast,   "51.8%","75%", "10%")}
+
+  <!-- Item 13: Relationship -->
+  ${f(m.hConRel,"55.9%","10%","37%")}
+  ${f(m.wConRel,"55.9%","51.5%","46%")}
+
+  <!-- Item 14: Consent Giver Residence -->
+  ${f(m.hConRes,"58.4%","10%","38%")}
+  ${f(m.wConRes,"58.4%","51.5%","46%")}
+
+  <!-- Item 15: Place of Marriage (venue line + city/province sub-line) -->
+  ${f(m.placeVenue,    "59.2%","10%","32%")}
+  ${f(m.placeCityMun,  "61.2%","43%","19%")}
+  ${f(m.placeProvince, "61.2%","67%","20%")}
+
+  <!-- Item 16/17: Date + Time -->
+  ${f(m.marDay,                    "63.0%","10%", "6%")}
+  ${f(m.marMonth,                  "63.0%","19%", "10%")}
+  ${f(m.marYear,                   "63.0%","31%", "7%")}
+  ${f(`${m.marTime} ${m.marAMPM}`, "63.0%","63%", "12%")}
+
+  <!-- Item 18: Names within certification text -->
+  ${f(`${m.hFirst} ${m.hMiddle} ${m.hLast}`,"67.0%","16%","27%")}
+  ${f(`${m.wFirst} ${m.wMiddle} ${m.wLast}`,"67.0%","52%","38%")}
+
+  <!-- Item 19: License checkboxes -->
+  ${ck(!m.licArt34 && !m.licPD1083, "76.0%","1.8%")}
+  ${ck(m.licArt34,                   "77.3%","1.8%")}
+  ${ck(m.licPD1083,                  "78.7%","1.8%")}
+  ${f(m.licNo,   "76.0%","24%","17%")}
+  ${f(m.licDate, "76.0%","46%","13%")}
+  ${f(m.licAt,   "76.0%","64%","22%")}
+  ${m.licArt34 ? f("34","77.3%","43%","4%") : ""}
+
+  <!-- Item 19: Solemnizing Officer -->
+  ${f(m.solOfficer, "82.0%","10%","25%")}
+  ${f(m.solPosition,"82.0%","40%","18%")}
+  ${f(m.solReligion,"82.0%","60%","31%")}
+
+  <!-- Item 20a: Witnesses -->
+  ${f(m.wit1,"86.0%","10%","18%")}
+  ${f(m.wit2,"86.0%","30%","18%")}
+  ${f(m.wit3,"86.0%","51%","18%")}
+  ${f(m.wit4,"86.0%","71%","18%")}
+</div>
+
+${pg(p2)}`
+      + /* 20b witnesses (print name lines) */
+        f(m.wit1,"3.5%","4.5%","22%") + f(m.wit2,"3.5%","28.5%","22%") + f(m.wit3,"3.5%","54%","22%") + f(m.wit4,"3.5%","79%","13%")
+      /* Affidavit of Solemnizing Officer — "I, [name]" and address */
+      + f(m.affSolOfficer,"13%","5%","40%") + f(m.affSolAddr,"14.3%","5%","82%")
+      /* Sol Item 1: marriage between H and W */
+      + f(m.affSolH,"16.5%","40%","17%") + f(m.affSolW,"16.5%","61%","30%")
+      /* Sol circumstance checkboxes */
+      + ck(m.affSolCirc==="a","18.5%","1.8%") + ck(m.affSolCirc==="b","20.5%","1.8%")
+      + ck(m.affSolCirc==="c","25%",  "1.8%") + ck(m.affSolCirc==="d","29.5%","1.8%")
+      + ck(m.affSolCirc==="e","31%",  "1.8%")
+      /* Sol "In truth whereof" */
+      + f(m.affSolDay,"38%","22%","5%") + f(m.affSolMonth,"38%","28.5%","12%") + f(m.affSolAt,"38%","39%","25%")
+      /* Delayed Registration Affidavit — applicant name and residence */
+      + f(m.affDelApplicant,"58%","5%","45%") + f(m.affDelRes,"58%","68%","25%")
+      /* Del Item 1: spouse / place / date */
+      + f(m.affDelSpouse,   "63%","18%","22%") + f(m.affDelMarPlace,"63%","44%","15%") + f(m.affDelMarDate,"63%","63%","15%")
+      /* Del Item 2: solemnized by (officer on same row) */
+      + f(m.affDelMarPlace,"66.5%","24%","28%")
+      /* Del ceremony checkboxes */
+      + ck(m.affDelCeremony==="religious","69%","8.5%") + ck(m.affDelCeremony==="civil","69%","25%")
+      + ck(m.affDelCeremony==="muslim",   "69%","41%")  + ck(m.affDelCeremony==="tribal","69%","57%")
+      /* Del Item 3: license */
+      + ck(true,"71.5%","1.8%")
+      + f(m.affDelLicNo,"71.5%","15%","17%") + f(m.affDelLicOn,"71.5%","36%","13%") + f(m.affDelLicAt,"71.5%","52%","22%")
+      /* Del Item 4: citizenships */
+      + f(m.affDelApCit,"75.5%","40%","17%") + f(m.affDelSpCit,"75.5%","66%","20%")
+      /* Del Item 5: reason */
+      + f(m.affDelReason,"78.5%","33%","55%")
+      /* Del "In truth whereof" */
+      + f(m.affDelDay,"82.5%","22%","5%") + f(m.affDelMonth,"82.5%","29%","12%") + f(m.affDelAt,"82.5%","40%","25%")
+      + `
+</div>
+
+<script>window.onload=()=>window.print()<\/script>
+</body></html>`;
+    }
+
+    case "Death Certificate":
+      return base("Certificate of Death", `
+        <p>This is to certify that <strong>${appt.subjectName}</strong>, a resident of ${ln(200)},
+        husband/wife/son/daughter of ${ln(200)}, died on the ${ln(60)} day of ${ln(140)} at the age of ${ln(60)},
+        and the Funeral Rites were celebrated in this Parish on the ${ln(60)} day of ${ln(140)}.
+        The cause of death was ${ln(240)}. He/She received the last Sacrament of confession, Extreme Unction
+        and Holy Viaticum before death <em>or</em> he/she was not able to receive any Sacrament before death.</p>
+        <p>This is a true copy of the original record as it appears in the Register of Dead of this Parish,
+        Book No. ${ln(60)}, Year ${ln(70)}, Page ${ln(60)}, Line no. ${ln(60)}.</p>
+        <p>In witness whereof I affix my signature and put the seal of this Parroquia de San Pedro Apostol,
+        Vinzons, Camarines Norte, on the ${ln(60)} day of ${ln(180)}.</p>`,
+        "Parish Priest / Parochial Vicar");
+
+    case "Confirmation":
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          *{box-sizing:border-box;margin:0;padding:0}
+          body{font-family:'Inter',sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+          .cert{width:660px;padding:28px 36px;border:4px double #1A1400}
+          .cert-top{text-align:center;margin-bottom:16px}
+          .cert-top .parish{font-size:15px;font-weight:800;color:#1A1400;letter-spacing:.02em}
+          .cert-top .address{font-size:10px;color:#666;margin-top:3px}
+          .cert-title{text-align:center;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#1A1400;margin:14px 0 18px;border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:8px 0}
+          .cert-body{font-size:12.5px;line-height:2;color:#1A1400}
+          .cert-body p{margin-bottom:6px}
+          .ln{border-bottom:1px solid #333;display:inline-block;min-width:160px;vertical-align:bottom}
+          .cert-footer{margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end}
+          .sig-block .line{border-top:1px solid #333;padding-top:5px;margin-top:32px;width:220px}
+          .sig-block .name{font-size:11px;font-weight:700;text-align:center}
+          .nb{font-size:9.5px;color:#666;text-align:center;margin-top:16px;font-style:italic}
+          @media print{body{padding:0}@page{size:A4 portrait;margin:14mm}}
+        </style></head><body>
+        <div class="cert">
+          <div class="cert-top">
+            <img src="${logoB64}" alt="Seal" style="width:70px;height:70px;object-fit:contain;display:block;margin:0 auto 10px">
+            <div class="parish">PARROQUIA DE SAN PEDRO APOSTOL</div>
+            <div class="address">Anacleto Guinto Street, Brgy. 3, Vinzons, Camarines Norte</div>
+          </div>
+          <div class="cert-title">Certificate of Confirmation</div>
+          <div class="cert-body">
+            <p>Name: <strong>${appt.subjectName}</strong></p>
+            <p>Age: <span class="ln">&nbsp;</span></p>
+            <p>Father: <span class="ln" style="min-width:240px">&nbsp;</span></p>
+            <p>Mother: <span class="ln" style="min-width:240px">&nbsp;</span></p>
+            <p>Place of Baptism: <span class="ln" style="min-width:240px">&nbsp;</span></p>
+            <p>Date of Confirmation: <strong>${appt.dateOfSacrament ? fmt(appt.dateOfSacrament) : '<span class="ln" style="min-width:200px">&nbsp;</span>'}</strong></p>
+            <p>Minister: <span class="ln" style="min-width:240px">&nbsp;</span></p>
+            <p>Sponsor: <span class="ln" style="min-width:240px">&nbsp;</span></p>
+            <p>Book no. <span class="ln" style="min-width:60px">&nbsp;</span> Page no. <span class="ln" style="min-width:60px">&nbsp;</span> Entry no. <span class="ln" style="min-width:60px">&nbsp;</span> &nbsp; Remarks: <span class="ln" style="min-width:160px">&nbsp;</span></p>
+            <p>Date issued: <strong>${issued}</strong></p>
+          </div>
+          <div class="nb">N.B. Any mark or alteration of any kind invalidates this certificate.</div>
+          <div class="cert-footer">
+            <div style="font-size:11px;color:#555">by: ___________________________</div>
+            <img src="${logoB64}" alt="Seal" style="width:50px;height:50px;object-fit:contain">
+            <div class="sig-block"><div class="line"><div class="name">Parish Priest / Parochial Vicar</div></div></div>
+          </div>
+        </div>
+        <script>window.onload=()=>window.print()<\/script></body></html>`;
+
+    default: {
+      const s = SACR[appt.sacramentType] ?? SACR["No Record"];
+      return base(`Certificate of ${appt.sacramentType}`, `
+        <p>This is to certify that <strong>${appt.subjectName}</strong>
         ${s.cert.charAt(0).toUpperCase() + s.cert.slice(1)}
         ${appt.dateOfSacrament ? `on <strong>${fmt(appt.dateOfSacrament)}</strong>` : ""}
-        as recorded in the sacramental register of this Parish.
-        <br><br>
-        This certificate is issued upon the request of <strong>${appt.parishioner}</strong>
-        ${appt.purposeOf ? `for the purpose of <strong>${appt.purposeOf}</strong>` : ""}.
-      </div>
-      <div class="cert-meta">
-        <div class="cert-mi"><div class="l">Certificate No.</div><div class="v">${appt.id}</div></div>
-        ${appt.dateOfSacrament ? `<div class="cert-mi"><div class="l">Date of Sacrament</div><div class="v">${fmt(appt.dateOfSacrament)}</div></div>` : ""}
-        <div class="cert-mi"><div class="l">Date Issued</div><div class="v">${fmt(todayISO())}</div></div>
-      </div>
-      <div class="cert-sigs">
-        <div><div class="sig-line"><div class="sig-name">REV. FR. RENE TABIOS</div><div class="sig-role">Parish Priest</div></div></div>
-        <div><div class="sig-line"><div class="sig-name">PARISH SECRETARY</div><div class="sig-role">Records Office</div></div></div>
-      </div>
-      <div class="cert-no">${appt.id} &bull; Issued ${fmtShort(todayISO())} &bull; PdSPA Records Office</div>
+        as recorded in the sacramental register of this Parish.</p>
+        <p>This certificate is issued upon the request of <strong>${appt.parishioner}</strong>
+        ${appt.purposeOf ? `for the purpose of <strong>${appt.purposeOf}</strong>` : ""}.</p>
+        <p>Date Issued: <strong>${issued}</strong> &bull; Ref: ${appt.id}</p>`,
+        "Parish Priest / Parochial Vicar");
+    }
+  }
+}/* ─── SIMPLE BAR CHART (SVG) ─────────────────────────────── */
+function SimpleBarChart({ data, height = 200 }:
+  { data: { name: string; full: string; count: number }[]; height?: number }) {
+  const [hover, setHover] = useState<number | null>(null);
+  if (data.length === 0) {
+    return <div style={{ height, display:"flex", alignItems:"center", justifyContent:"center",
+      fontSize:16, color:T.muted }}>No data to display.</div>;
+  }
+  const padL = 28, padB = 28, padT = 8;
+  const W = 100;                         // viewBox width units (responsive via width:100%)
+  const H = height;
+  const max = Math.max(...data.map(d => d.count), 1);
+  const step = max <= 4 ? 1 : Math.ceil(max / 4);
+  const ticks: number[] = [];
+  for (let v = 0; v <= max; v += step) ticks.push(v);
+  if (ticks[ticks.length - 1] !== max) ticks.push(max);
+  const plotH = H - padB - padT;
+  const y = (v: number) => padT + plotH * (1 - v / max);
+  const bandW = (W - padL) / data.length;
+  const barW = bandW * 0.5;
+
+  return (
+    <div style={{ position:"relative", width:"100%" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ width:"100%", height, display:"block", overflow:"visible" }}>
+        {/* gridlines + y labels */}
+        {ticks.map(t => (
+          <g key={`grid-${t}`}>
+            <line x1={padL} x2={W} y1={y(t)} y2={y(t)}
+              stroke={T.border} strokeWidth="0.3" strokeDasharray="1 1"
+              vectorEffect="non-scaling-stroke"/>
+            <text x={padL - 3} y={y(t) + 3} textAnchor="end"
+              fontSize="6" fill={T.muted} style={{ fontFamily:"inherit" }}>{t}</text>
+          </g>
+        ))}
+        {/* bars */}
+        {data.map((d, i) => {
+          const bx = padL + i * bandW + (bandW - barW) / 2;
+          const bh = plotH * (d.count / max);
+          return (
+            <g key={`bar-${d.full}`}
+              onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
+              <rect x={bx} y={y(d.count)} width={barW} height={bh}
+                rx="1" fill={SACR[d.full]?.col ?? T.primary}
+                opacity={hover === null || hover === i ? 1 : 0.55}
+                style={{ transition:"opacity .15s" }}/>
+              <text x={bx + barW / 2} y={H - padB + 8} textAnchor="middle"
+                fontSize="6" fill={T.muted} style={{ fontFamily:"inherit" }}>{d.name}</text>
+            </g>
+          );
+        })}
+      </svg>
+      {/* tooltip */}
+      {hover !== null && (
+        <div style={{ position:"absolute", top:0, left:"50%", transform:"translateX(-50%)",
+          background:"#fff", border:`1px solid ${T.border}`, borderRadius:6,
+          padding:"4px 8px", fontSize:15, color:T.text, pointerEvents:"none",
+          boxShadow:"0 2px 8px rgba(0,0,0,.08)", whiteSpace:"nowrap" }}>
+          <strong>{data[hover].full}</strong>: {data[hover].count} request{data[hover].count === 1 ? "" : "s"}
+        </div>
+      )}
     </div>
-  </div>
-  <script>window.onload=()=>window.print()<\/script>
-  </body></html>`;
+  );
+}
+
+/* ─── SIMPLE HORIZONTAL BARS (div-based) ─────────────────── */
+function HBars({ data }: { data: { name: string; count: number; color: string }[] }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      {data.map(d => (
+        <div key={d.name} style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ width:96, flexShrink:0, fontSize:14, color:T.sub, textAlign:"right",
+            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{d.name}</div>
+          <div style={{ flex:1, height:16, background:T.bg, border:`1px solid ${T.border}`,
+            borderRadius:4, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${(d.count / max) * 100}%`,
+              background:d.color, borderRadius:4, minWidth: d.count > 0 ? 3 : 0,
+              transition:"width .3s" }}/>
+          </div>
+          <div style={{ width:24, flexShrink:0, fontSize:15, fontWeight:700, color:T.text }}>{d.count}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave }:
+  { open: boolean; onClose: () => void; subjectName: string;
+    initialData: MarriageFormData; onSave: (d: MarriageFormData) => void }) {
+  const [d, setD] = useState<MarriageFormData>(initialData);
+  const [sec, setSec] = useState<MarSec>("registry");
+  const upd = (k: keyof MarriageFormData, v: string|boolean) => setD(p => ({...p,[k]:v}));
+
+  useEffect(() => { if (open) { setD(initialData); setSec("registry"); } }, [open]);
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  if (!open) return null;
+
+  const g3: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 };
+  const g4: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 };
+  const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 };
+  const idx = MAR_SECTIONS.findIndex(s => s.id === sec);
+  const cur = MAR_SECTIONS[idx];
+  return (
+    <div onClick={e => { if(e.target===e.currentTarget) onClose(); }}
+      style={{ position:"fixed", inset:0, zIndex:300, background:"rgba(0,0,0,.4)",
+        display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+      <div style={{ background:"#fff", borderRadius:10, border:`1px solid ${T.border}`, width:"100%", maxWidth:1080,
+        boxShadow:"0 12px 40px rgba(0,0,0,.18)", maxHeight:"94vh", display:"flex", flexDirection:"column" }}>
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between",
+          padding:"14px 18px 10px", borderBottom:`1px solid ${T.border}` }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:18, color:T.text }}>Marriage Details — {subjectName}</div>
+            <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>PSA Municipal Form No. 97 — Certificate of Marriage · Back-office structured data · auto-fills the printed Form 97</div>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", fontSize:25, color:T.muted, lineHeight:1, padding:0 }}>×</button>
+        </div>
+        <div style={{ display:"flex", flex:1, minHeight:0 }}>
+          <nav style={{ width:232, flexShrink:0, borderRight:`1px solid ${T.border}`, background:T.bg, padding:"10px 0", overflowY:"auto" }}>
+            {MAR_SECTIONS.map((s, i) => {
+              const a = s.id === sec;
+              return (
+                <button key={s.id} onClick={() => setSec(s.id)}
+                  style={{ width:"100%", display:"flex", gap:10, alignItems:"center", padding:"8px 16px", textAlign:"left",
+                    background: a ? T.surface : "transparent", border:"none", cursor:"pointer",
+                    borderLeft: a ? `2px solid ${T.primary}` : "2px solid transparent" }}>
+                  <span style={{ width:20, height:20, borderRadius:99, flexShrink:0, fontSize:13, fontWeight:700,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    background: a ? T.primary : T.surface, color: a ? "#fff" : T.muted, border:`1px solid ${a ? T.primary : T.borderMd}` }}>{i+1}</span>
+                  <span style={{ fontSize:15, fontWeight: a ? 700 : 500, color: a ? T.text : T.sub, lineHeight:1.25 }}>{s.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <div style={{ flex:1, padding:"16px 20px", overflowY:"auto" }}>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:14, color:T.muted, textTransform:"uppercase", letterSpacing:".06em", fontWeight:700 }}>Section {idx+1} of {MAR_SECTIONS.length}</div>
+              <div style={{ fontSize:18, fontWeight:700, color:T.text }}>{cur.label}</div>
+              <div style={{ fontSize:15, color:T.muted }}>{cur.hint}</div>
+            </div>
+{sec === "registry" && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+          <div><FL>Province</FL><FI value={d.province} onChange={e=>upd("province",e.target.value)}/></div>
+          <div><FL>City / Municipality</FL><FI value={d.cityMun} onChange={e=>upd("cityMun",e.target.value)}/></div>
+          <div><FL>Registry No.</FL><FI value={d.registryNo} onChange={e=>upd("registryNo",e.target.value)}/></div>
+        </div>
+)}
+{sec === "husband" && (
+<div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                <div style={g3}><div><FL>1. First Name</FL><FI value={d.hFirst} onChange={e=>upd("hFirst",e.target.value)}/></div><div><FL>Middle Name</FL><FI value={d.hMiddle} onChange={e=>upd("hMiddle",e.target.value)}/></div><div><FL>Last Name</FL><FI value={d.hLast} onChange={e=>upd("hLast",e.target.value)}/></div></div>
+                <div style={g4}><div><FL>2a. DOB Day</FL><FI value={d.hDobDay} onChange={e=>upd("hDobDay",e.target.value)} placeholder="DD"/></div><div><FL>Month</FL><FI value={d.hDobMonth} onChange={e=>upd("hDobMonth",e.target.value)} placeholder="January"/></div><div><FL>Year</FL><FI value={d.hDobYear} onChange={e=>upd("hDobYear",e.target.value)} placeholder="YYYY"/></div><div><FL>2b. Age</FL><FI value={d.hAge} onChange={e=>upd("hAge",e.target.value)}/></div></div>
+                <div style={g3}><div><FL>3. POB City/Mun.</FL><FI value={d.hPobCity} onChange={e=>upd("hPobCity",e.target.value)}/></div><div><FL>Province</FL><FI value={d.hPobProvince} onChange={e=>upd("hPobProvince",e.target.value)}/></div><div><FL>Country</FL><FI value={d.hPobCountry} onChange={e=>upd("hPobCountry",e.target.value)}/></div></div>
+                <div style={g2}><div><FL>4a. Sex</FL><FS value={d.hSex} onChange={e=>upd("hSex",e.target.value)}><option>Male</option><option>Female</option></FS></div><div><FL>4b. Citizenship</FL><FI value={d.hCitizenship} onChange={e=>upd("hCitizenship",e.target.value)}/></div></div>
+                <div><FL>5. Residence (House No., Street, City/Mun., Province, Country)</FL><FI value={d.hResidence} onChange={e=>upd("hResidence",e.target.value)}/></div>
+                <div><FL>6. Religion / Religious Sect</FL><FI value={d.hReligion} onChange={e=>upd("hReligion",e.target.value)}/></div>
+                <div><FL>7. Civil Status</FL><FI value={d.hCivilStatus} onChange={e=>upd("hCivilStatus",e.target.value)}/></div>
+                <div style={g3}><div><FL>8. Father First</FL><FI value={d.hFatFirst} onChange={e=>upd("hFatFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.hFatMiddle} onChange={e=>upd("hFatMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.hFatLast} onChange={e=>upd("hFatLast",e.target.value)}/></div></div>
+                <div><FL>9. Father's Citizenship</FL><FI value={d.hFatCit} onChange={e=>upd("hFatCit",e.target.value)}/></div>
+                <div style={g3}><div><FL>10. Mother First</FL><FI value={d.hMotFirst} onChange={e=>upd("hMotFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.hMotMiddle} onChange={e=>upd("hMotMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.hMotLast} onChange={e=>upd("hMotLast",e.target.value)}/></div></div>
+                <div><FL>11. Mother's Citizenship</FL><FI value={d.hMotCit} onChange={e=>upd("hMotCit",e.target.value)}/></div>
+</div>
+)}
+{sec === "wife" && (
+<div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                <div style={g3}><div><FL>1. First Name</FL><FI value={d.wFirst} onChange={e=>upd("wFirst",e.target.value)}/></div><div><FL>Middle Name</FL><FI value={d.wMiddle} onChange={e=>upd("wMiddle",e.target.value)}/></div><div><FL>Last Name</FL><FI value={d.wLast} onChange={e=>upd("wLast",e.target.value)}/></div></div>
+                <div style={g4}><div><FL>2a. DOB Day</FL><FI value={d.wDobDay} onChange={e=>upd("wDobDay",e.target.value)} placeholder="DD"/></div><div><FL>Month</FL><FI value={d.wDobMonth} onChange={e=>upd("wDobMonth",e.target.value)} placeholder="January"/></div><div><FL>Year</FL><FI value={d.wDobYear} onChange={e=>upd("wDobYear",e.target.value)} placeholder="YYYY"/></div><div><FL>2b. Age</FL><FI value={d.wAge} onChange={e=>upd("wAge",e.target.value)}/></div></div>
+                <div style={g3}><div><FL>3. POB City/Mun.</FL><FI value={d.wPobCity} onChange={e=>upd("wPobCity",e.target.value)}/></div><div><FL>Province</FL><FI value={d.wPobProvince} onChange={e=>upd("wPobProvince",e.target.value)}/></div><div><FL>Country</FL><FI value={d.wPobCountry} onChange={e=>upd("wPobCountry",e.target.value)}/></div></div>
+                <div style={g2}><div><FL>4a. Sex</FL><FS value={d.wSex} onChange={e=>upd("wSex",e.target.value)}><option>Female</option><option>Male</option></FS></div><div><FL>4b. Citizenship</FL><FI value={d.wCitizenship} onChange={e=>upd("wCitizenship",e.target.value)}/></div></div>
+                <div><FL>5. Residence (House No., Street, City/Mun., Province, Country)</FL><FI value={d.wResidence} onChange={e=>upd("wResidence",e.target.value)}/></div>
+                <div><FL>6. Religion / Religious Sect</FL><FI value={d.wReligion} onChange={e=>upd("wReligion",e.target.value)}/></div>
+                <div><FL>7. Civil Status</FL><FI value={d.wCivilStatus} onChange={e=>upd("wCivilStatus",e.target.value)}/></div>
+                <div style={g3}><div><FL>8. Father First</FL><FI value={d.wFatFirst} onChange={e=>upd("wFatFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.wFatMiddle} onChange={e=>upd("wFatMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.wFatLast} onChange={e=>upd("wFatLast",e.target.value)}/></div></div>
+                <div><FL>9. Father's Citizenship</FL><FI value={d.wFatCit} onChange={e=>upd("wFatCit",e.target.value)}/></div>
+                <div style={g3}><div><FL>10. Mother First</FL><FI value={d.wMotFirst} onChange={e=>upd("wMotFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.wMotMiddle} onChange={e=>upd("wMotMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.wMotLast} onChange={e=>upd("wMotLast",e.target.value)}/></div></div>
+                <div><FL>11. Mother's Citizenship</FL><FI value={d.wMotCit} onChange={e=>upd("wMotCit",e.target.value)}/></div>
+</div>
+)}
+{sec === "consent" && (
+<div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
+<div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+<div style={{ fontWeight:700, fontSize:15, color:T.primary, textTransform:"uppercase", letterSpacing:".06em" }}>Husband — Person giving consent / advice</div>
+                <div style={g3}><div><FL>12. Consent Giver First</FL><FI value={d.hConFirst} onChange={e=>upd("hConFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.hConMiddle} onChange={e=>upd("hConMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.hConLast} onChange={e=>upd("hConLast",e.target.value)}/></div></div>
+                <div style={g2}><div><FL>13. Relationship</FL><FI value={d.hConRel} onChange={e=>upd("hConRel",e.target.value)}/></div><div><FL>14. Consent Giver Residence</FL><FI value={d.hConRes} onChange={e=>upd("hConRes",e.target.value)}/></div></div>
+</div>
+<div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+<div style={{ fontWeight:700, fontSize:15, color:T.primary, textTransform:"uppercase", letterSpacing:".06em" }}>Wife — Person giving consent / advice</div>
+                <div style={g3}><div><FL>12. Consent Giver First</FL><FI value={d.wConFirst} onChange={e=>upd("wConFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.wConMiddle} onChange={e=>upd("wConMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.wConLast} onChange={e=>upd("wConLast",e.target.value)}/></div></div>
+                <div style={g2}><div><FL>13. Relationship</FL><FI value={d.wConRel} onChange={e=>upd("wConRel",e.target.value)}/></div><div><FL>14. Consent Giver Residence</FL><FI value={d.wConRes} onChange={e=>upd("wConRes",e.target.value)}/></div></div>
+</div>
+</div>
+)}
+{sec === "details" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>15. Place of Marriage</div>
+              <div style={g3}>
+                <div><FL>Office/House/Church/Mosque of</FL><FI value={d.placeVenue} onChange={e=>upd("placeVenue",e.target.value)}/></div>
+                <div><FL>City / Municipality</FL><FI value={d.placeCityMun} onChange={e=>upd("placeCityMun",e.target.value)}/></div>
+                <div><FL>Province</FL><FI value={d.placeProvince} onChange={e=>upd("placeProvince",e.target.value)}/></div>
+              </div>
+              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginTop:8 }}>16. Date of Marriage</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr", gap:10 }}>
+                <div><FL>Day</FL><FI value={d.marDay} onChange={e=>upd("marDay",e.target.value)} placeholder="e.g., 12"/></div>
+                <div><FL>Month</FL><FI value={d.marMonth} onChange={e=>upd("marMonth",e.target.value)} placeholder="e.g., September"/></div>
+                <div><FL>Year</FL><FI value={d.marYear} onChange={e=>upd("marYear",e.target.value)} placeholder="e.g., 2026"/></div>
+                <div><FL>17. Time</FL><FI value={d.marTime} onChange={e=>upd("marTime",e.target.value)} placeholder="e.g., 10:00"/></div>
+                <div><FL>AM / PM</FL><FS value={d.marAMPM} onChange={e=>upd("marAMPM",e.target.value)}><option>AM</option><option>PM</option></FS></div>
+              </div>
+              <div style={{ marginTop:10, padding:14, background:T.priLight, borderRadius:8, border:`1px solid ${T.borderMd}`, fontSize:15, color:T.sub }}>
+                <strong>Item 18 — Certification of Contracting Parties:</strong> Signatures of husband and wife are affixed on the printed certificate at the time of ceremony.
+              </div>
+            </div>
+)}
+{sec === "officer" && (
+<div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>19. Certification of the Solemnizing Officer</div>
+              <div style={g3}>
+                <div><FL>Officer Name</FL><FI value={d.solOfficer} onChange={e=>upd("solOfficer",e.target.value)}/></div>
+                <div><FL>Position / Designation</FL><FI value={d.solPosition} onChange={e=>upd("solPosition",e.target.value)}/></div>
+                <div><FL>Religion / Registry No.</FL><FI value={d.solReligion} onChange={e=>upd("solReligion",e.target.value)}/></div>
+              </div>
+              <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:14 }}>
+                <label style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:16, color:T.text, marginBottom:12 }}>
+                  <input type="radio" name="lic-basis" checked={!d.licArt34&&!d.licPD1083}
+                    onChange={() => { upd("licArt34",false); upd("licPD1083",false); }} style={{ marginTop:2 }}/>
+                  <span><strong>a. Marriage License was required</strong> — provide details below:</span>
+                </label>
+                <div style={{ ...g3, marginLeft:24 }}>
+                  <div><FL>License No.</FL><FI value={d.licNo} onChange={e=>upd("licNo",e.target.value)}/></div>
+                  <div><FL>Issued On</FL><FI value={d.licDate} onChange={e=>upd("licDate",e.target.value)} placeholder="e.g., January 5, 2026"/></div>
+                  <div><FL>Issued At</FL><FI value={d.licAt} onChange={e=>upd("licAt",e.target.value)} placeholder="Place"/></div>
+                </div>
+                <label style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:16, color:T.text, margin:"12px 0 6px" }}>
+                  <input type="radio" name="lic-basis" checked={d.licArt34}
+                    onChange={() => { upd("licArt34",true); upd("licPD1083",false); }} style={{ marginTop:2 }}/>
+                  <span><strong>b. No marriage license</strong> — solemnized under Art. 34, Executive Order No. 209 (5-year cohabitation)</span>
+                </label>
+                <label style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:16, color:T.text }}>
+                  <input type="radio" name="lic-basis" checked={d.licPD1083}
+                    onChange={() => { upd("licArt34",false); upd("licPD1083",true); }} style={{ marginTop:2 }}/>
+                  <span><strong>c. Solemnized</strong> in accordance with Presidential Decree No. 1083</span>
+                </label>
+              </div>
+</div>
+)}
+{sec === "witnesses" && (
+<div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginTop:4 }}>20. Witnesses (Print Name)</div>
+              <div style={g2}>
+                <div><FL>Witness 1</FL><FI value={d.wit1} onChange={e=>upd("wit1",e.target.value)}/></div>
+                <div><FL>Witness 2</FL><FI value={d.wit2} onChange={e=>upd("wit2",e.target.value)}/></div>
+                <div><FL>Witness 3</FL><FI value={d.wit3} onChange={e=>upd("wit3",e.target.value)}/></div>
+                <div><FL>Witness 4</FL><FI value={d.wit4} onChange={e=>upd("wit4",e.target.value)}/></div>
+              </div>
+</div>
+)}
+{sec === "affSol" && (
+              <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:16 }}>
+                <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:d.affSolInclude?14:0 }}>
+                  <input type="checkbox" checked={d.affSolInclude} onChange={e=>upd("affSolInclude",e.target.checked)}/>
+                  <span style={{ fontSize:15, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>Affidavit of Solemnizing Officer</span>
+                </label>
+                {d.affSolInclude && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    <div style={g2}><div><FL>Officer Name</FL><FI value={d.affSolOfficer} onChange={e=>upd("affSolOfficer",e.target.value)}/></div><div><FL>Address</FL><FI value={d.affSolAddr} onChange={e=>upd("affSolAddr",e.target.value)}/></div></div>
+                    <div style={g2}><div><FL>Husband's Full Name</FL><FI value={d.affSolH} onChange={e=>upd("affSolH",e.target.value)}/></div><div><FL>Wife's Full Name</FL><FI value={d.affSolW} onChange={e=>upd("affSolW",e.target.value)}/></div></div>
+                    <div>
+                      <FL>Circumstance (check applicable)</FL>
+                      {[["a","a. Article 34 — no legal impediment, qualifications ascertained"],
+                        ["b","b. Articulo mortis — at point of death"],
+                        ["c","c. Contracting party physically unable to sign"],
+                        ["d","d. No transportation available"],
+                        ["e","e. Muslim or ethnic community rites"]].map(([v,label]) => (
+                        <label key={v} style={{ display:"flex", alignItems:"center", gap:6, fontSize:15, color:T.text, marginBottom:5 }}>
+                          <input type="radio" name="aff-sol-circ" checked={d.affSolCirc===v} onChange={() => upd("affSolCirc",v)}/> {label}
+                        </label>
+                      ))}
+                    </div>
+                    <div style={g3}><div><FL>Day Signed</FL><FI value={d.affSolDay} onChange={e=>upd("affSolDay",e.target.value)}/></div><div><FL>Month</FL><FI value={d.affSolMonth} onChange={e=>upd("affSolMonth",e.target.value)}/></div><div><FL>At (Place)</FL><FI value={d.affSolAt} onChange={e=>upd("affSolAt",e.target.value)}/></div></div>
+                  </div>
+                )}
+              </div>
+)}
+{sec === "affDel" && (
+              <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:16 }}>
+                <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:d.affDelInclude?14:0 }}>
+                  <input type="checkbox" checked={d.affDelInclude} onChange={e=>upd("affDelInclude",e.target.checked)}/>
+                  <span style={{ fontSize:15, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>Affidavit for Delayed Registration of Marriage</span>
+                </label>
+                {d.affDelInclude && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    <div style={g3}><div><FL>Applicant Name</FL><FI value={d.affDelApplicant} onChange={e=>upd("affDelApplicant",e.target.value)}/></div><div><FL>Civil Status</FL><FI value={d.affDelCivStat} onChange={e=>upd("affDelCivStat",e.target.value)}/></div><div><FL>Residence</FL><FI value={d.affDelRes} onChange={e=>upd("affDelRes",e.target.value)}/></div></div>
+                    <div style={g3}><div><FL>Spouse Name</FL><FI value={d.affDelSpouse} onChange={e=>upd("affDelSpouse",e.target.value)}/></div><div><FL>Marriage Date</FL><FI value={d.affDelMarDate} onChange={e=>upd("affDelMarDate",e.target.value)}/></div><div><FL>Marriage Place</FL><FI value={d.affDelMarPlace} onChange={e=>upd("affDelMarPlace",e.target.value)}/></div></div>
+                    <div>
+                      <FL>Ceremony Type</FL>
+                      <div style={{ display:"flex", gap:20, marginTop:4 }}>
+                        {[["religious","Religious"],["civil","Civil"],["muslim","Muslim Rites"],["tribal","Tribal Rites"]].map(([v,label]) => (
+                          <label key={v} style={{ display:"flex", alignItems:"center", gap:4, fontSize:15, color:T.text }}>
+                            <input type="radio" name="aff-del-cer" checked={d.affDelCeremony===v} onChange={() => upd("affDelCeremony",v)}/> {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={g3}><div><FL>License No.</FL><FI value={d.affDelLicNo} onChange={e=>upd("affDelLicNo",e.target.value)}/></div><div><FL>Issued On</FL><FI value={d.affDelLicOn} onChange={e=>upd("affDelLicOn",e.target.value)}/></div><div><FL>Issued At</FL><FI value={d.affDelLicAt} onChange={e=>upd("affDelLicAt",e.target.value)}/></div></div>
+                    <div style={g2}><div><FL>Applicant's Citizenship</FL><FI value={d.affDelApCit} onChange={e=>upd("affDelApCit",e.target.value)}/></div><div><FL>Spouse's Citizenship</FL><FI value={d.affDelSpCit} onChange={e=>upd("affDelSpCit",e.target.value)}/></div></div>
+                    <div><FL>Reason for Delay</FL><FT rows={2} value={d.affDelReason} onChange={e=>upd("affDelReason",e.target.value)}/></div>
+                    <div style={g3}><div><FL>Day Signed</FL><FI value={d.affDelDay} onChange={e=>upd("affDelDay",e.target.value)}/></div><div><FL>Month</FL><FI value={d.affDelMonth} onChange={e=>upd("affDelMonth",e.target.value)}/></div><div><FL>At (Place)</FL><FI value={d.affDelAt} onChange={e=>upd("affDelAt",e.target.value)}/></div></div>
+                  </div>
+                )}
+              </div>
+)}
+          </div>
+        </div>
+
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 18px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
+          <div style={{ display:"flex", gap:8 }}>
+            <Btn variant="ghost" size="sm" disabled={idx===0} onClick={() => setSec(MAR_SECTIONS[Math.max(0,idx-1)].id)}>Previous</Btn>
+            <Btn variant="ghost" size="sm" disabled={idx===MAR_SECTIONS.length-1} onClick={() => setSec(MAR_SECTIONS[Math.min(MAR_SECTIONS.length-1,idx+1)].id)}>Next section</Btn>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+            <Btn variant="primary" onClick={() => { onSave(d); onClose(); }}>Save Form 97 Data</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ─── SIDEBAR ────────────────────────────────────────────── */
-const NAV: { view: View; label: string }[] = [
+
+const NAV_ICON: Record<View, React.ComponentType<{ size?: number; strokeWidth?: number }>> = {
+  dashboard:LayoutDashboard, requests:Inbox, calendar:CalendarDays, book:BookOpen, certificates:FileText,
+  issuance:ClipboardList, reports:BarChart3, staff:Users, services:SlidersHorizontal, settings:Settings, audit:ShieldCheck,
+};
+/* Plain-language "how to use this page" steps, shown from the header Help button */
+const VIEW_HELP: Record<View, string[]> = {
+  dashboard:["See today's schedule and pending work at a glance.","Click any item to jump straight to it."],
+  requests:["Find a request with the search box or status filters.","Open it, check the documents, then press Verify → Approve.","Record the OR No. once the fee is paid."],
+  calendar:["Approved appointments appear automatically.","Use \"Add Activity\" for parish Masses, holidays, or closed office days.","The system warns you about schedule conflicts."],
+  book:["Record the Book, Page and Entry No. from the physical register.","Corrections always require a reason."],
+  certificates:["Choose the approved request.","Press Preview to check the details, then Print & Issue."],
+  issuance:["Every printed certificate is listed here.","Search by name or certificate number. Records cannot be deleted."],
+  reports:["Choose a report type.","Set the date range, then press Generate.","Print or Export to CSV."],
+  staff:["Add staff and set their role.","Deactivate an account to remove access — accounts are never deleted."],
+  services:["Set fees and scheduling rules for each service.","Changes apply to new requests only."],
+  settings:["Update the parish profile, office hours, and logo.","Make regular backups of the data."],
+  audit:["Every action is recorded automatically.","Filter by user, module, or date to find an event."],
+};
+const NAV_OPS: { view: View; label: string }[] = [
   { view:"dashboard",    label:"Dashboard" },
-  { view:"appointments", label:"Appointments" },
-  { view:"certificates", label:"Certificates" },
-  { view:"book-entries", label:"Book Entries" },
-  { view:"funeral",      label:"Funeral / Campo Santo" },
+  { view:"requests",     label:"Requests" },
   { view:"calendar",     label:"Calendar" },
+  { view:"book",         label:"Book Entity" },
+  { view:"certificates", label:"Certificates" },
+  { view:"issuance",     label:"Certificate Issuance" },
   { view:"reports",      label:"Reports" },
 ];
+const NAV_ADMIN: { view: View; label: string }[] = [
+  { view:"staff",    label:"Staff Accounts" },
+  { view:"services", label:"Service Configuration" },
+  { view:"settings", label:"System Settings" },
+];
+const VIEW_LABEL: Record<View, string> = {
+  dashboard:"Dashboard", requests:"Requests", calendar:"Calendar of Activities", book:"Book Entity",
+  certificates:"Certificates", issuance:"Certificate Issuance", reports:"Reports", staff:"Staff Accounts",
+  services:"Service Configuration", settings:"System Settings", audit:"Activity Logs / Audit Logs",
+};
+function canSee(v: View, a: Auth) {
+  if (v === "audit") return a.superadmin;
+  if (NAV_ADMIN.some(n => n.view === v)) return a.role === "admin";
+  return true;
+}
 
-function Sidebar({ view, setView, name, role, onLogout }:
-  { view: View; setView: (v: View) => void; name: string; role: UserRole; onLogout: () => void }) {
+function Sidebar({ view, setView, auth, pending, onLogout }:
+  { view: View; setView: (v: View) => void; auth: Auth; pending: number; onLogout: () => void }) {
+  const item = (n: { view: View; label: string }) => {
+    const active = view === n.view;
+    return (
+      <button key={n.view} onClick={() => setView(n.view)}
+        aria-current={active ? "page" : undefined} className="sarms-nav"
+        style={{ width:"calc(100% - 20px)", margin:"2px 10px", display:"flex", alignItems:"center", gap:12, padding:"11px 14px", textAlign:"left",
+          fontSize:16, fontWeight: active ? 700 : 500, minHeight:46, borderRadius:10,
+          color: active ? "#fff" : T.text,
+          background: active ? T.priHov : "transparent",
+          border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+        {(() => { const I = NAV_ICON[n.view]; return <I size={20} strokeWidth={active ? 2.4 : 2}/>; })()}
+        <span style={{ flex:1 }}>{n.label}</span>
+        {n.view === "requests" && pending > 0 && (
+          <span title={`${pending} pending`} style={{ fontSize:14, fontWeight:700, minWidth:26, padding:"2px 8px", borderRadius:99, background: active ? "#fff" : T.red, color: active ? T.priHov : "#fff", textAlign:"center" }}>{pending}</span>
+        )}
+      </button>
+    );
+  };
+  const group = (label: string) => (
+    <div style={{ padding:"18px 24px 6px", fontSize:13, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:".08em" }}>{label}</div>
+  );
   return (
-    <aside style={{ width:256, minHeight:"100vh", background:T.surface, borderRight:`1px solid ${T.border}`,
+    <aside aria-label="Main navigation" style={{ width:"clamp(240px, 15vw, 280px)", minHeight:"100vh", background:T.surface, borderRight:`1px solid ${T.border}`,
       display:"flex", flexDirection:"column", flexShrink:0, position:"sticky", top:0, height:"100vh" }}>
 
       {/* Logo */}
-      <div style={{ padding:"20px 24px", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", gap:10 }}>
-        <div style={{ width:32, height:32, flexShrink:0 }}>
+      <div style={{ padding:"16px 18px", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", gap:10 }}>
+        <div style={{ width:40, height:40, flexShrink:0 }}>
           <ImageWithFallback src={logoSrc} alt="PdSPA" style={{ width:"100%", height:"100%", objectFit:"contain" }}/>
         </div>
         <div>
-          <div style={{ fontSize:14, fontWeight:700, color:T.text, lineHeight:1.2 }}>PdSPA</div>
-          <div style={{ fontSize:11, color:T.muted, lineHeight:1.2 }}>SARMS</div>
+          <div style={{ fontSize:17, fontWeight:700, color:T.text, lineHeight:1.2 }}>San Pedro Apostol</div>
+          <div style={{ fontSize:14, color:T.muted, lineHeight:1.3 }}>Parish Records (SARMS)</div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav style={{ flex:1, padding:"8px 0", overflowY:"auto" }}>
-        {NAV.map(n => {
-          const active = view === n.view;
-          return (
-            <button key={n.view} onClick={() => setView(n.view)}
-              style={{ width:"100%", display:"block", padding:"10px 20px", textAlign:"left",
-                fontSize:14, fontWeight: active ? 600 : 400,
-                color: active ? T.primary : T.sub,
-                background: active ? T.priLight : "transparent",
-                border:"none", cursor:"pointer",
-                borderLeft: active ? `2px solid ${T.primary}` : "2px solid transparent" }}>
-              {n.label}
-            </button>
-          );
-        })}
+      <nav style={{ flex:1, padding:"4px 0 8px", overflowY:"auto" }}>
+        {group("Operations")}
+        {NAV_OPS.map(item)}
+        {auth.role === "admin" && <>{group("Administration")}{NAV_ADMIN.map(item)}</>}
+        {auth.superadmin && <>{group("Superadmin")}{item({ view:"audit", label:"Activity Logs / Audit Logs" })}</>}
       </nav>
 
       {/* User */}
-      <div style={{ padding:"12px 18px", borderTop:`1px solid ${T.border}` }}>
-        <div style={{ fontSize:13, fontWeight:600, color:T.text }}>{name}</div>
-        <div style={{ fontSize:12, color:T.muted, textTransform:"capitalize", marginBottom:8 }}>{role}</div>
-        <button onClick={onLogout}
-          style={{ fontSize:13, color:T.muted, background:"none", border:"none", cursor:"pointer", padding:0 }}>
-          Sign out
-        </button>
+      <div style={{ padding:"14px 18px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
+        <div style={{ fontSize:15, color:T.muted }}>Signed in as</div>
+        <div style={{ fontSize:16, fontWeight:700, color:T.text }}>{auth.name}</div>
+        <div style={{ fontSize:14, color:T.muted, marginBottom:6 }}>@{auth.username}</div>
+        <div style={{ marginBottom:8 }}><RoleTag a={auth}/></div>
+        <Btn variant="ghost" onClick={onLogout} style={{ width:"100%" }}><LogOut size={18}/> Sign out</Btn>
       </div>
     </aside>
   );
@@ -615,86 +1527,117 @@ function Sidebar({ view, setView, name, role, onLogout }:
 
 /* ─── LOGIN ──────────────────────────────────────────────── */
 const DEMO = [
-  { label:"Admin", u:"admin", p:"admin123", r:"admin" as UserRole },
-  { label:"Staff", u:"staff", p:"staff123", r:"staff" as UserRole },
+  { label:"Staff",                   u:"msantos", p:"staff123" },
+  { label:"Admin",                   u:"aquinto", p:"admin123" },
+  { label:"Admin (designated Superadmin)", u:"jreyes",  p:"admin123" },
 ];
 
-function LoginView({ onLogin }: { onLogin: (r: UserRole, n: string) => void }) {
+function LoginView({ accounts, onLogin, onFail }:
+  { accounts: StaffAccount[]; onLogin: (a: StaffAccount) => void; onFail: (username: string, why: string) => void }) {
   const [user,    setUser]    = useState("");
   const [pass,    setPass]    = useState("");
   const [showPw,  setShowPw]  = useState(false);
   const [err,     setErr]     = useState("");
   const [busy,    setBusy]    = useState(false);
+  const [fails,   setFails]   = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
+  const [, tick] = useState(0);
+
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const i = setInterval(() => { tick(x => x + 1); if (Date.now() > lockedUntil) { setLockedUntil(0); setFails(0); setErr(""); } }, 1000);
+    return () => clearInterval(i);
+  }, [lockedUntil]);
+  const lockLeft = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - Date.now()) / 1000)) : 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setErr("");
-    const m = DEMO.find(d => d.u === user.trim() && d.p === pass);
-    if (!m) { setErr("Incorrect username or password."); return; }
+    if (lockLeft) return;
+    const u = user.trim().toLowerCase();
+    if (!u || !pass) { setErr("Enter your username and password."); return; }
     setBusy(true);
-    await new Promise(r => setTimeout(r, 600));
-    onLogin(m.r, m.label);
+    await new Promise(r => setTimeout(r, 500));
+    const acc = accounts.find(a => a.username === u);
+    if (!acc || DEMO_CREDENTIALS[u] !== pass) {
+      const n = fails + 1; setFails(n);
+      onFail(u, acc ? "incorrect password" : "no matching account");
+      setBusy(false); setPass("");
+      if (n >= 3) { setLockedUntil(Date.now() + 30000); setErr("Too many failed attempts. Sign-in is paused for 30 seconds."); }
+      else setErr(`Incorrect username or password. ${3 - n} attempt${3 - n === 1 ? "" : "s"} remaining.`);
+      return;
+    }
+    if (acc.status === "inactive") {
+      onFail(u, "account inactive");
+      setBusy(false); setErr("This account is inactive. Please contact the parish administrator.");
+      return;
+    }
+    onLogin(acc);
   }
 
   const ulInp: React.CSSProperties = {
     width:"100%", border:"none", borderBottom:"1.5px solid #D6CC9A",
-    padding:"10px 0", fontSize:15, fontFamily:"inherit",
+    padding:"10px 0", fontSize:17, fontFamily:"inherit",
     color:"#1A1400", background:"transparent", outline:"none",
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#FFFDF5",
-      display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+    <div style={{ minHeight:"100vh", position:"relative", isolation:"isolate", overflow:"hidden",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div aria-hidden style={{ position:"absolute", inset:-60, zIndex:-2,
+        background:`url(${parishBanner}) center/cover no-repeat`, filter:"blur(14px)", transform:"scale(1.05)" }} />
+      <div aria-hidden style={{ position:"absolute", inset:0, zIndex:-1,
+        background:"linear-gradient(rgba(255,253,245,.5), rgba(255,253,245,.65))" }} />
 
-      {/* Two-panel card */}
-      <div style={{ display:"flex", width:"100%", maxWidth:860,
-        borderRadius:16, overflow:"hidden", boxShadow:"0 8px 40px rgba(0,0,0,.12)" }}>
+      <div style={{ display:"flex", width:"100%", maxWidth:780,
+        borderRadius:16, overflow:"hidden", border:"1px solid rgba(201,150,10,.18)",
+        boxShadow:"0 1px 2px rgba(61,31,0,.08), 0 8px 20px -6px rgba(61,31,0,.18), 0 32px 72px -16px rgba(61,31,0,.38)" }}>
 
         {/* Left — gradient panel with logo */}
         <div style={{ flex:"0 0 340px", background:"linear-gradient(160deg,#F5A623 0%,#FDDEA0 100%)",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-          padding:"56px 40px", gap:20 }}>
-          <div style={{ width:200, height:200 }}>
+          padding:"48px 32px", gap:20, position:"relative", zIndex:1,
+          boxShadow:"6px 0 24px -8px rgba(107,63,0,.35)" }}>
+          <div style={{ width:180, height:180 }}>
             <ImageWithFallback src={logoSrc} alt="PdSPA Seal"
               style={{ width:"100%", height:"100%", objectFit:"contain", filter:"drop-shadow(0 2px 8px rgba(0,0,0,.15))" }}/>
           </div>
           <div style={{ textAlign:"center" }}>
-            <p style={{ fontSize:20, fontWeight:700, color:"#3D1F00", margin:0, lineHeight:1.3 }}>
+            <p style={{ fontSize:21, fontWeight:700, color:"#3D1F00", margin:0, lineHeight:1.3 }}>
               PdSPA Record<br/>Management System
             </p>
+            <p style={{ fontSize:14, color:"#6B3F00", margin:"8px 0 0", letterSpacing:".06em", textTransform:"uppercase", fontWeight:600 }}>Staff &amp; Admin Access</p>
           </div>
         </div>
 
         {/* Right — login form */}
         <div style={{ flex:1, background:"#FFFFFF",
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-          padding:"56px 60px 48px" }}>
+          padding:"48px 48px 40px" }}>
 
-          <h1 style={{ fontSize:22, fontWeight:800, color:"#C9960A", letterSpacing:".12em",
+          <h1 style={{ fontSize:23, fontWeight:800, color:"#C9960A", letterSpacing:".12em",
             textTransform:"uppercase", margin:"0 0 36px" }}>
             User Login
           </h1>
 
-          <form onSubmit={submit} noValidate style={{ width:"100%", maxWidth:360, display:"flex", flexDirection:"column", gap:28 }}>
-            {/* Username */}
+          <form onSubmit={submit} noValidate style={{ width:"100%", maxWidth:300, display:"flex", flexDirection:"column", gap:28 }}>
             <div>
-              <input type="text" placeholder="Username" value={user} autoComplete="username"
+              <input type="text" placeholder="Username" value={user} autoComplete="username" disabled={!!lockLeft}
                 onChange={e => { setUser(e.target.value); setErr(""); }}
-                style={ulInp}
+                style={{ ...ulInp, borderBottomColor: err ? T.red : "#D6CC9A" }}
                 onFocus={e => (e.currentTarget.style.borderBottomColor="#C9960A")}
                 onBlur={e  => (e.currentTarget.style.borderBottomColor="#D6CC9A")}/>
             </div>
 
-            {/* Password */}
             <div style={{ position:"relative" }}>
-              <input type={showPw ? "text" : "password"} placeholder="Password" value={pass}
+              <input type={showPw ? "text" : "password"} placeholder="Password" value={pass} disabled={!!lockLeft}
                 autoComplete="current-password"
                 onChange={e => { setPass(e.target.value); setErr(""); }}
-                style={{ ...ulInp, paddingRight:28 }}
+                style={{ ...ulInp, paddingRight:28, borderBottomColor: err ? T.red : "#D6CC9A" }}
                 onFocus={e => (e.currentTarget.style.borderBottomColor="#C9960A")}
                 onBlur={e  => (e.currentTarget.style.borderBottomColor="#D6CC9A")}/>
-              <button type="button" onClick={() => setShowPw(v => !v)}
+              <button type="button" onClick={() => setShowPw(v => !v)} aria-label={showPw ? "Hide password" : "Show password"}
                 style={{ position:"absolute", right:0, top:"50%", transform:"translateY(-50%)",
-                  background:"none", border:"none", cursor:"pointer", padding:0, color:"#A8964A", fontSize:16 }}>
+                  background:"none", border:"none", cursor:"pointer", padding:0, color:"#A8964A", fontSize:19 }}>
                 {showPw ? (
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                 ) : (
@@ -703,31 +1646,31 @@ function LoginView({ onLogin }: { onLogin: (r: UserRole, n: string) => void }) {
               </button>
             </div>
 
-            {err && <p style={{ margin:"-16px 0 0", fontSize:13, color:T.red }}>{err}</p>}
+            {err && <p role="alert" style={{ margin:"-16px 0 0", fontSize:15, color:T.red, lineHeight:1.4 }}>{err}{lockLeft ? ` (${lockLeft}s)` : ""}</p>}
 
-            {/* Login button */}
-            <button type="submit" disabled={busy}
+            <button type="submit" disabled={busy || !!lockLeft}
               style={{ width:"100%", padding:"12px", borderRadius:99,
-                background:"#C9960A", color:"#fff", border:"none", cursor:busy?"not-allowed":"pointer",
-                fontSize:15, fontWeight:800, letterSpacing:".12em", textTransform:"uppercase",
-                opacity:busy?.7:1, transition:"opacity .15s" }}>
+                background:"#C9960A", color:"#fff", border:"none", cursor:busy||lockLeft?"not-allowed":"pointer",
+                fontSize:17, fontWeight:800, letterSpacing:".12em", textTransform:"uppercase",
+                opacity:busy||lockLeft?.6:1, transition:"opacity .15s",
+                boxShadow:"0 2px 4px rgba(150,105,0,.25), 0 8px 18px -6px rgba(201,150,10,.55)" }}>
               {busy ? "Signing in..." : "Login"}
             </button>
           </form>
 
-          {/* Demo hints */}
-          <div style={{ marginTop:32, width:"100%", maxWidth:360 }}>
-            <p style={{ fontSize:11, color:T.muted, textTransform:"uppercase", letterSpacing:".06em",
+          <div style={{ marginTop:32, width:"100%", maxWidth:300 }}>
+            <p style={{ fontSize:13, color:T.muted, textTransform:"uppercase", letterSpacing:".06em",
               fontWeight:700, marginBottom:8 }}>Demo accounts</p>
             {DEMO.map(d => (
-              <button key={d.r} onClick={() => { setUser(d.u); setPass(d.p); }}
+              <button key={d.u} onClick={() => { setUser(d.u); setPass(d.p); setErr(""); }}
                 style={{ display:"flex", justifyContent:"space-between", width:"100%",
                   padding:"4px 0", background:"none", border:"none", cursor:"pointer",
-                  fontSize:12, color:T.sub }}>
+                  fontSize:14, color:T.sub }}>
                 <span style={{ fontWeight:600 }}>{d.label}</span>
                 <span style={{ fontFamily:"monospace", color:T.muted }}>{d.u} / {d.p}</span>
               </button>
             ))}
+            <p style={{ fontSize:13, color:T.muted, marginTop:10, lineHeight:1.5 }}>All sign-in attempts are recorded. Contact the parish administrator for account access.</p>
           </div>
         </div>
       </div>
@@ -736,653 +1679,1504 @@ function LoginView({ onLogin }: { onLogin: (r: UserRole, n: string) => void }) {
 }
 
 /* ─── DASHBOARD ──────────────────────────────────────────── */
-/* ─── MASS INTENTION STATUS ──────────────────────────────── */
-const MASS_STATUS_CFG: Record<MassReqStatus, { label: string; col: string; bg: string }> = {
-  pending:    { label:"Pending",    col:"#92400E", bg:"#FEF3C7" },
-  confirmed:  { label:"Confirmed",  col:"#065F46", bg:"#D1FAE5" },
-  celebrated: { label:"Celebrated", col:"#4B5563", bg:"#F3F4F6" },
-};
-
-function MassBadge({ status }: { status: MassReqStatus }) {
-  const { label, col, bg } = MASS_STATUS_CFG[status];
-  return <span style={{ padding:"2px 8px", borderRadius:4, fontSize:12, fontWeight:600,
-    background:bg, color:col, whiteSpace:"nowrap" }}>{label}</span>;
+interface UpItem { key: string; date: string; start: string; end: string; allDay: boolean; title: string; cat: string; kind: "Appointment"|"Activity"; sub: string; }
+function buildUpcoming(appts: Appointment[], activities: Activity[], days = 21): UpItem[] {
+  const from = todayISO();
+  const toD = new Date(); toD.setDate(toD.getDate() + days);
+  const to = `${toD.getFullYear()}-${pad(toD.getMonth()+1)}-${pad(toD.getDate())}`;
+  const items: UpItem[] = [
+    ...activities.filter(a => a.status === "active" && a.date >= from && a.date <= to).map(a => ({
+      key:a.id, date:a.date, start:a.start, end:a.end, allDay:a.allDay, title:a.title, cat:a.category, kind:"Activity" as const, sub:a.location })),
+    ...appts.filter(r => r.status === "scheduled" && r.apprDate >= from && r.apprDate <= to).map(r => ({
+      key:r.id, date:r.apprDate, start:r.apprStart, end:r.apprEnd, allDay:false, title:`${r.sacramentType} — ${r.subjectName}`, cat:r.sacramentType, kind:"Appointment" as const, sub:r.id })),
+  ];
+  return items.sort((a, b) => (a.date + (a.allDay ? "00:00" : a.start)).localeCompare(b.date + (b.allDay ? "00:00" : b.start)));
 }
 
-/* ─── MASS INTENTIONS CARD ───────────────────────────────── */
-function MassIntentionsCard({ intentions, setIntentions }:
-  { intentions: MassIntention[]; setIntentions: React.Dispatch<React.SetStateAction<MassIntention[]>> }) {
-
-  const [tab,    setTab]    = useState<"list"|"new">("list");
-  const [viewM,  setViewM]  = useState<MassIntention|null>(null);
-  const [busy,   setBusy]   = useState(false);
-
-  const blank = { requestor:"", contact:"", intention:"", massType:"For the Repose of Soul" as MassType,
-    massDate:"", massTime:"6:00 AM", offering:"", celebrant:"", notes:"" };
-  const [form, setForm] = useState(blank);
-  const [ferr, setFerr] = useState<Record<string,string>>({});
-  const sf = (k: string, v: string) => { setForm(p => ({...p,[k]:v})); setFerr(p => ({...p,[k]:""})); };
-
-  const upcoming = intentions
-    .filter(m => m.status !== "celebrated")
-    .sort((a,b) => a.massDate.localeCompare(b.massDate));
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const e2: Record<string,string> = {};
-    if (!form.requestor.trim())  e2.requestor  = "Required";
-    if (!form.contact.trim())    e2.contact     = "Required";
-    if (!form.intention.trim())  e2.intention   = "Required";
-    if (!form.massDate)          e2.massDate    = "Required";
-    setFerr(e2); if (Object.keys(e2).length) return;
-    setBusy(true);
-    await new Promise(r => setTimeout(r, 600));
-    setIntentions(p => [{ id:nmid(), requestDate:todayISO(), status:"pending", ...form }, ...p]);
-    setForm(blank); setFerr({}); setBusy(false); setTab("list");
-  }
-
-  const tabBtn = (label: string, t: "list"|"new", count?: number) => (
-    <button onClick={() => setTab(t)}
-      style={{ padding:"8px 14px", fontSize:13, fontWeight:tab===t?600:400,
-        color:tab===t?T.text:T.muted, background:"none", border:"none",
-        borderBottom:`2px solid ${tab===t?T.primary:"transparent"}`, cursor:"pointer",
-        display:"flex", alignItems:"center", gap:5 }}>
-      {label}
-      {count !== undefined && count > 0 && (
-        <span style={{ background:T.primary, color:"#fff", borderRadius:99,
-          fontSize:11, fontWeight:700, padding:"1px 5px" }}>{count}</span>
-      )}
-    </button>
-  );
-
-  const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 };
-  const pendingCount = intentions.filter(m => m.status === "pending").length;
-
-  return (
-    <Card>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"16px 22px", borderBottom:`1px solid ${T.border}` }}>
-        <div style={{ fontSize:14, fontWeight:700, color:T.text }}>Mass Intentions</div>
-        <div style={{ display:"flex" }}>
-          {tabBtn("Schedule", "list", pendingCount)}
-          {tabBtn("New Booking", "new")}
-        </div>
-      </div>
-
-      {/* LIST */}
-      {tab === "list" && (
-        <>
-          {upcoming.length === 0 && (
-            <p style={{ padding:"20px 16px", fontSize:14, color:T.muted, textAlign:"center", margin:0 }}>
-              No upcoming mass intentions.
-            </p>
-          )}
-          <div style={{ maxHeight:320, overflowY:"auto" }}>
-            {upcoming.map((m, i) => (
-              <div key={m.id}
-                style={{ display:"flex", alignItems:"center", gap:20, padding:"16px 22px",
-                  borderBottom:`1px solid ${T.border}`, background: i%2===1 ? T.bg : T.surface }}>
-
-                {/* Date block */}
-                <div style={{ flexShrink:0, width:44, textAlign:"center", padding:"4px 6px",
-                  background:T.priLight, border:`1px solid ${T.borderMd}`, borderRadius:6 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:T.primary, textTransform:"uppercase" }}>
-                    {m.massDate ? new Date(m.massDate+"T00:00:00").toLocaleDateString("en-PH",{month:"short"}) : "—"}
-                  </div>
-                  <div style={{ fontSize:22, fontWeight:800, color:T.text, lineHeight:1.1 }}>
-                    {m.massDate ? new Date(m.massDate+"T00:00:00").getDate() : "—"}
-                  </div>
-                  <div style={{ fontSize:9, color:T.muted }}>{m.massTime}</div>
-                </div>
-
-                {/* Details */}
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:T.text,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {m.intention}
-                  </div>
-                  <div style={{ fontSize:12, color:T.muted }}>
-                    {m.massType} &bull; {m.requestor}
-                    {m.offering && <span style={{ marginLeft:6 }}>· PHP {m.offering}</span>}
-                  </div>
-                </div>
-
-                <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-                  <MassBadge status={m.status}/>
-                  <button onClick={() => setViewM(m)}
-                    style={{ fontSize:12, color:T.muted, background:"none", border:"none",
-                      cursor:"pointer", padding:"2px 6px" }}>
-                    View
-                  </button>
-                  {m.status === "pending" && (
-                    <button onClick={() => setIntentions(p => p.map(x => x.id===m.id?{...x,status:"confirmed"}:x))}
-                      style={{ fontSize:12, color:T.green, background:T.greenL, border:`1px solid ${T.greenB}`,
-                        borderRadius:4, padding:"2px 8px", cursor:"pointer", fontWeight:600 }}>
-                      Confirm
-                    </button>
-                  )}
-                  {m.status === "confirmed" && (
-                    <button onClick={() => setIntentions(p => p.map(x => x.id===m.id?{...x,status:"celebrated"}:x))}
-                      style={{ fontSize:12, color:T.sub, background:T.bg, border:`1px solid ${T.border}`,
-                        borderRadius:4, padding:"2px 8px", cursor:"pointer", fontWeight:600 }}>
-                      Done
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Celebrated count */}
-          {intentions.filter(m=>m.status==="celebrated").length > 0 && (
-            <div style={{ padding:"7px 14px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
-              <span style={{ fontSize:12, color:T.muted }}>
-                {intentions.filter(m=>m.status==="celebrated").length} celebrated this period
-              </span>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* NEW BOOKING FORM */}
-      {tab === "new" && (
-        <form onSubmit={submit} noValidate style={{ padding:14, display:"flex", flexDirection:"column", gap:10 }}>
-          <div style={g2}>
-            <div>
-              <FL req>Requestor Name</FL>
-              <FI value={form.requestor} placeholder="Full name" onChange={e => sf("requestor",e.target.value)}/>
-              {ferr.requestor && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.requestor}</p>}
-            </div>
-            <div>
-              <FL req>Contact No.</FL>
-              <FI value={form.contact} placeholder="09XX-XXX-XXXX" onChange={e => sf("contact",e.target.value)}/>
-              {ferr.contact && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.contact}</p>}
-            </div>
-          </div>
-          <div>
-            <FL req>Name / Intention</FL>
-            <FI value={form.intention} placeholder="e.g., + Juan dela Cruz, For healing of Maria..." onChange={e => sf("intention",e.target.value)}/>
-            {ferr.intention && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.intention}</p>}
-          </div>
-          <div>
-            <FL req>Intention Type</FL>
-            <FS value={form.massType} onChange={e => sf("massType",e.target.value)}>
-              {MASS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </FS>
-          </div>
-          <div style={g2}>
-            <div>
-              <FL req>Mass Date</FL>
-              <FI type="date" value={form.massDate} min={todayISO()} onChange={e => sf("massDate",e.target.value)}/>
-              {ferr.massDate && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.massDate}</p>}
-            </div>
-            <div>
-              <FL>Mass Time</FL>
-              <FS value={form.massTime} onChange={e => sf("massTime",e.target.value)}>
-                {MASS_TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-              </FS>
-            </div>
-          </div>
-          <div style={g2}>
-            <div>
-              <FL>Offering (PHP)</FL>
-              <FI type="number" value={form.offering} placeholder="e.g., 300" onChange={e => sf("offering",e.target.value)}/>
-            </div>
-            <div>
-              <FL>Assigned Celebrant</FL>
-              <FI value={form.celebrant} placeholder="Fr. Rene Tabios" onChange={e => sf("celebrant",e.target.value)}/>
-            </div>
-          </div>
-          <div>
-            <FL>Notes</FL>
-            <FT rows={2} value={form.notes} placeholder="Special instructions..." onChange={e => sf("notes",e.target.value)}/>
-          </div>
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:12, paddingTop:4 }}>
-            <Btn variant="ghost" size="sm" type="button" onClick={() => { setForm(blank); setFerr({}); }}>Clear</Btn>
-            <Btn variant="primary" size="sm" type="submit" disabled={busy}>{busy?"Saving...":"Book Mass"}</Btn>
-          </div>
-        </form>
-      )}
-
-      {/* VIEW MODAL */}
-      <Modal open={!!viewM} title={viewM?.id ?? ""} onClose={() => setViewM(null)}
-        footer={<Btn variant="ghost" onClick={() => setViewM(null)}>Close</Btn>}>
-        {viewM && (
-          <dl style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:"8px 20px", fontSize:14 }}>
-            {([["ID",viewM.id],["Requestor",viewM.requestor],["Contact",viewM.contact],
-              ["Intention",viewM.intention],["Type",viewM.massType],
-              ["Mass Date",fmt(viewM.massDate)],["Mass Time",viewM.massTime],
-              ["Offering",viewM.offering?`PHP ${viewM.offering}`:"—"],
-              ["Celebrant",viewM.celebrant||"—"],["Notes",viewM.notes||"—"]] as [string,string][])
-              .map(([k,v]) => (
-                <div key={k} style={{ display:"contents" }}>
-                  <dt style={{ fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",color:T.muted,paddingTop:2 }}>{k}</dt>
-                  <dd style={{ color:T.text }}>{v}</dd>
-                </div>
-              ))}
-            <div style={{ display:"contents" }}>
-              <dt style={{ fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",color:T.muted }}>Status</dt>
-              <dd><MassBadge status={viewM.status}/></dd>
-            </div>
-          </dl>
-        )}
-      </Modal>
-    </Card>
-  );
-}
-
-interface Todo { id: number; text: string; done: boolean; }
-
-function QuickTodos() {
-  const [todos, setTodos] = useState<Todo[]>([
-    { id:1, text:"Verify pending baptismal request (SARMS-2026-004)", done:false },
-    { id:2, text:"Update book entry — Burial/Death Vol. 15",           done:false },
-    { id:3, text:"Print certificate for Rosario Layug",                done:true  },
-  ]);
-  const [input, setInput] = useState("");
-
-  function add() {
-    const t = input.trim();
-    if (!t) return;
-    setTodos(p => [...p, { id: Date.now(), text:t, done:false }]);
-    setInput("");
-  }
-  function toggle(id: number) { setTodos(p => p.map(x => x.id===id ? {...x, done:!x.done} : x)); }
-  function remove(id: number) { setTodos(p => p.filter(x => x.id !== id)); }
-
-  const done  = todos.filter(x => x.done).length;
-  const total = todos.length;
-
-  return (
-    <Card>
-      <CardHead
-        title="Quick To-Dos"
-        sub={total ? `${done} of ${total} done` : "No tasks yet"}
-        right={
-          done > 0 && (
-            <button onClick={() => setTodos(p => p.filter(x => !x.done))}
-              style={{ fontSize:12, color:T.muted, background:"none", border:"none", cursor:"pointer", padding:0 }}>
-              Clear done
-            </button>
-          )
-        }
-      />
-
-      {/* Progress bar */}
-      {total > 0 && (
-        <div style={{ height:3, background:T.border }}>
-          <div style={{ height:"100%", background:T.primary, width:`${(done/total)*100}%`, transition:"width .3s" }}/>
-        </div>
-      )}
-
-      {/* List */}
-      <div style={{ maxHeight:260, overflowY:"auto" }}>
-        {todos.length === 0 && (
-          <p style={{ padding:"20px 16px", fontSize:14, color:T.muted, textAlign:"center", margin:0 }}>
-            No tasks. Add one below.
-          </p>
-        )}
-        {todos.map(todo => (
-          <div key={todo.id}
-            style={{ display:"flex", alignItems:"center", gap:12, padding:"11px 16px",
-              borderBottom:`1px solid ${T.border}`, background: todo.done ? T.bg : T.surface }}>
-            <button onClick={() => toggle(todo.id)}
-              style={{ width:16, height:16, borderRadius:4, flexShrink:0, cursor:"pointer",
-                border:`1.5px solid ${todo.done ? T.primary : T.borderMd}`,
-                background: todo.done ? T.primary : "transparent",
-                display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
-              {todo.done && (
-                <svg width="9" height="9" viewBox="0 0 10 8" fill="none">
-                  <path d="M1 4l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </button>
-            <span style={{ flex:1, fontSize:14, color: todo.done ? T.muted : T.text,
-              textDecoration: todo.done ? "line-through" : "none", lineHeight:1.4 }}>
-              {todo.text}
-            </span>
-            <button onClick={() => remove(todo.id)}
-              style={{ background:"none", border:"none", cursor:"pointer", color:T.muted,
-                fontSize:15, lineHeight:1, padding:"0 2px", opacity:.5 }}
-              onMouseEnter={e => (e.currentTarget.style.opacity="1")}
-              onMouseLeave={e => (e.currentTarget.style.opacity=".5")}>
-              x
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Add input */}
-      <div style={{ display:"flex", gap:12, padding:"12px 16px", borderTop:`1px solid ${T.border}` }}>
-        <input
-          type="text"
-          placeholder="Add a task..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") add(); }}
-          style={{ flex:1, border:"none", borderBottom:`1.5px solid ${T.border}`, padding:"4px 0",
-            fontSize:14, fontFamily:"inherit", color:T.text, background:"transparent", outline:"none" }}
-          onFocus={e  => (e.currentTarget.style.borderBottomColor = T.primary)}
-          onBlur={e   => (e.currentTarget.style.borderBottomColor = T.border)}
-        />
-        <button onClick={add}
-          style={{ padding:"4px 14px", borderRadius:6, background:T.primary, color:"#fff",
-            border:"none", cursor:"pointer", fontSize:14, fontWeight:600 }}>
-          Add
-        </button>
-      </div>
-    </Card>
-  );
-}
-
-function DashboardView({ appts, setView, massInts, setMassInts }:
-  { appts: Appointment[]; setView: (v: View) => void;
-    massInts: MassIntention[]; setMassInts: React.Dispatch<React.SetStateAction<MassIntention[]>> }) {
-  const pending   = appts.filter(a => a.status === "pending").length;
-  const scheduled = appts.filter(a => a.status === "scheduled").length;
-  const completed = appts.filter(a => a.status === "completed").length;
-  const total     = appts.length;
+function DashboardView({ appts, activities, issuance, logs, accounts }:
+  { appts: Appointment[]; activities: Activity[]; issuance: Issuance[]; logs: AuditLog[]; accounts: StaffAccount[] }) {
+  const { auth, go } = useApp();
+  const isAdmin = auth.role === "admin";
+  const count = (s: ReqStatus) => appts.filter(a => a.status === s).length;
+  const ym = todayISO().slice(0,7);
+  const issuedMonth = issuance.filter(i => i.status === "issued" && i.issuedAt.startsWith(ym)).length;
+  const upcoming = buildUpcoming(appts, activities).slice(0, 7);
 
   const chartData = SACR_LIST.map(t => ({
-    name: t.split("/")[0].split(" ").slice(-1)[0],
-    full: t,
-    count: appts.filter(a => a.sacramentType === t).length,
-    col: SACR[t]?.col ?? T.primary,
+    name: t === "Good Standing/Membership" ? "Good Stdg." : t === "First Holy Communion" ? "Communion" : t.replace(" Certificate",""),
+    full: t, count: appts.filter(a => a.sacramentType === t).length,
   })).filter(x => x.count > 0);
 
-  const stat = (label: string, val: number, note: string) => (
-    <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, padding:"22px 26px" }}>
-      <div style={{ fontSize:12, fontWeight:600, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginBottom:6 }}>{label}</div>
-      <div style={{ fontSize:34, fontWeight:800, color:T.text, lineHeight:1 }}>{val}</div>
-      <div style={{ fontSize:12, color:T.muted, marginTop:4 }}>{note}</div>
+  const stat = (label: string, val: number, note: string, onClick: () => void, accent?: string) => (
+    <button onClick={onClick} style={{ textAlign:"left", background:T.surface, border:`1px solid ${T.border}`, borderRadius:8, padding:"16px 18px", cursor:"pointer",
+      borderTop:`3px solid ${accent ?? T.border}` }}>
+      <div style={{ fontSize:14, fontWeight:600, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginBottom:6 }}>{label}</div>
+      <div style={{ fontSize:29, fontWeight:800, color:T.text, lineHeight:1 }}>{val}</div>
+      <div style={{ fontSize:14, color:T.muted, marginTop:4 }}>{note}</div>
+    </button>
+  );
+
+  const shortcuts: { label: string; sub: string; v: View }[] = [
+    { label:"Review Pending Requests", sub:`${count("pending")} awaiting verification`, v:"requests" },
+    { label:"Open Calendar",           sub:"Activities & approved schedules", v:"calendar" },
+    { label:"Encode Book Entity",      sub:"Digital index of parish registers", v:"book" },
+    { label:"View Certificate Issuance", sub:"Permanent issuance history", v:"issuance" },
+  ];
+  const adminShortcuts: { label: string; sub: string; v: View }[] = [
+    { label:"Staff Accounts", sub:`${accounts.filter(a => a.status === "active").length} active accounts`, v:"staff" },
+    { label:"Service Configuration", sub:"Fees, durations, scheduling rules", v:"services" },
+    { label:"Reports", sub:"Generate, preview, export", v:"reports" },
+    { label:"Calendar", sub:"Calendar administration", v:"calendar" },
+    { label:"System Settings", sub:"Parish profile, backup", v:"settings" },
+    ...(auth.superadmin ? [{ label:"Activity Logs / Audit Logs", sub:"Read-only audit history", v:"audit" as View }] : []),
+  ];
+
+  const weekAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })();
+  const staffSummary = accounts.map(a => {
+    const mine = logs.filter(l => l.username === a.username && l.at.slice(0,10) >= weekAgo);
+    return { a, total: mine.length, last: mine[0]?.at ?? "" };
+  });
+
+  const shortcutGrid = (list: typeof shortcuts) => (
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:12 }}>
+      {list.map(s => (
+        <button key={s.label} onClick={() => go(s.v, s.v === "requests" ? {} : undefined)}
+          style={{ textAlign:"left", padding:"10px 12px", border:`1px solid ${T.border}`, borderRadius:6, background:T.bg, cursor:"pointer" }}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = T.primary)}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = T.border)}>
+          <div style={{ fontSize:16, fontWeight:600, color:T.text }}>{s.label} <span style={{ color:T.primary }}>→</span></div>
+          <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>{s.sub}</div>
+        </button>
+      ))}
     </div>
   );
 
   return (
     <div>
-      <div style={{ marginBottom:20 }}>
-        <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Dashboard</h1>
-        <p style={{ fontSize:15, color:T.muted, marginTop:4 }}>
-          {new Date().toLocaleDateString("en-PH", { weekday:"long", month:"long", day:"numeric", year:"numeric" })}
-        </p>
+      {(() => {
+        const now = new Date();
+        const h = now.getHours();
+        const greet = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+        const first = auth.name.split(" ")[0];
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+        const todayCount = upcoming.filter(u => u.date === todayStr).length;
+        return (
+          <section style={{ position:"relative", overflow:"hidden", borderRadius:14, marginBottom:18, padding:"34px 40px",
+            background:`linear-gradient(115deg, #FFFDF5 0%, #FBF1D3 48%, #F2DC9A 100%)`, border:`1px solid ${T.borderMd}`,
+            boxShadow:"0 10px 30px -18px rgba(140,100,0,.45)" }}>
+            {/* Parish banner photo — church & procession, faded into the gold wash */}
+            <img src={parishBanner as string} alt="" aria-hidden style={{ position:"absolute", top:0, right:0, height:"100%", width:"62%",
+              objectFit:"cover", objectPosition:"right 40%",
+              WebkitMaskImage:"linear-gradient(90deg, transparent 0%, #000 45%)", maskImage:"linear-gradient(90deg, transparent 0%, #000 45%)" }}/>
+            {/* Arched window motif */}
+            <svg viewBox="0 0 220 260" aria-hidden style={{ display:"none" }}>
+              <g fill="none" stroke="#C9960A" strokeWidth="2">
+                <path d="M20 260 V110 A90 90 0 0 1 200 110 V260"/>
+                <path d="M45 260 V115 A65 65 0 0 1 175 115 V260"/>
+                <path d="M110 50 V260 M45 160 H175"/>
+                <circle cx="110" cy="105" r="22"/>
+                <path d="M110 83 V127 M88 105 H132"/>
+              </g>
+            </svg>
+            <div style={{ position:"absolute", right:-60, bottom:-90, width:300, height:300, borderRadius:"50%",
+              display:"none" }}/>
+            <div style={{ position:"relative", display:"flex", alignItems:"center", gap:28 }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <h1 style={{ margin:"0 0 8px", fontSize:46, lineHeight:1.05, fontWeight:800, letterSpacing:"-.025em", color:T.text }}>
+                  {greet}, <span style={{ color:"#C9960A" }}>{first}</span>.
+                </h1>
+                <div style={{ fontSize:18, color:T.sub, maxWidth:560 }}>
+                  {count("pending") > 0
+                    ? <>You have <b style={{ color:T.text }}>{count("pending")} pending request{count("pending") === 1 ? "" : "s"}</b> and <b style={{ color:T.text }}>{todayCount} activit{todayCount === 1 ? "y" : "ies"}</b> today.</>
+                    : <>All requests are clear — <b style={{ color:T.text }}>{todayCount} activit{todayCount === 1 ? "y" : "ies"}</b> on today's calendar.</>}
+                </div>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
+        {stat("Pending Requests",   count("pending"),   "Awaiting verification", () => go("requests"), STATUS_CFG.pending.col)}
+        {stat("Verified Requests",  count("verified"),  "OR recorded · awaiting schedule/completion", () => go("requests"), STATUS_CFG.verified.col)}
+        {stat("Scheduled Requests", count("scheduled"), "Final schedule approved", () => go("requests"), STATUS_CFG.scheduled.col)}
+        {stat("Certificates Issued This Month", issuedMonth, new Date().toLocaleDateString("en-PH",{ month:"long", year:"numeric" }), () => go("issuance"), T.primary)}
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:20, marginBottom:20 }}>
-        {stat("Total Requests", total,     "All time")}
-        {stat("Pending",        pending,   "Awaiting action")}
-        {stat("Scheduled",      scheduled, "Confirmed")}
-        {stat("Completed",      completed, "Processed")}
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr", gap:28, alignItems:"start" }}>
-        {/* Left column */}
+      <div style={{ display:"grid", gridTemplateColumns:"1.45fr 1fr", gap:16, alignItems:"start" }}>
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
           <Card>
-            <CardHead title="Requests by Sacrament Type"/>
-            <div style={{ padding:16 }}>
-              <SimpleBarChart data={chartData} height={260}/>
-            </div>
+            <CardHead title="Upcoming Activities" sub="Approved appointments and parish activities · next 3 weeks"
+              right={<Btn variant="outline" size="sm" onClick={() => go("calendar")}>Open Calendar</Btn>}/>
+            {upcoming.length === 0 && <p style={{ padding:"20px 16px", fontSize:16, color:T.muted, textAlign:"center", margin:0 }}>Nothing scheduled in the next three weeks.</p>}
+            {upcoming.map(u => {
+              const d = new Date(u.date + "T00:00:00");
+              const isAppt = u.kind === "Appointment";
+              const col = isAppt ? (SACR[u.cat]?.col ?? T.sub) : (ACTIVITY_CATS[u.cat]?.col ?? T.sub);
+              return (
+                <div key={u.key} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 14px", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ flexShrink:0, width:46, textAlign:"center", padding:"4px 6px", background:T.priLight, border:`1px solid ${T.borderMd}`, borderRadius:6 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:col, textTransform:"uppercase" }}>{d.toLocaleDateString("en-PH",{month:"short"})}</div>
+                    <div style={{ fontSize:21, fontWeight:800, color:T.text, lineHeight:1.1 }}>{d.getDate()}</div>
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:16, fontWeight:600, color:T.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.title}</div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:3, flexWrap:"wrap" }}>
+                      {isAppt
+                        ? <span style={{ padding:"1px 7px", borderRadius:4, fontSize:14, fontWeight:600, border:`1px solid ${col}`, color:col }}>Appointment</span>
+                        : <CatTag cat={u.cat}/>}
+                      <span style={{ fontSize:14, color:T.muted }}>{fmtRange(u.start, u.end, u.allDay)} · {u.sub}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </Card>
 
-          <QuickTodos/>
+          <Card>
+            <CardHead title="Requests by Service" sub="All requests on file"/>
+            <div style={{ padding:16 }}><SimpleBarChart data={chartData} height={190}/></div>
+          </Card>
         </div>
 
-        {/* Right column */}
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          <MassIntentionsCard intentions={massInts} setIntentions={setMassInts}/>
-
           <Card>
-            <CardHead title="Recent Activity"/>
-            <div>
-              {appts.slice(0, 5).map((a, i) => (
-                <div key={a.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                  padding:"11px 16px", borderBottom: i < 4 ? `1px solid ${T.border}` : "none", gap:10 }}>
+            <CardHead title="Shortcuts"/>
+            {shortcutGrid(shortcuts)}
+          </Card>
+
+          {isAdmin && (
+            <Card>
+              <CardHead title="Administration" sub={auth.superadmin ? "Signed in as designated Superadmin" : undefined}/>
+              {shortcutGrid(adminShortcuts)}
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card>
+              <CardHead title="Staff Activity Summary" sub="Logged actions · last 7 days"/>
+              {staffSummary.map(({ a, total, last }, i) => (
+                <div key={a.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"9px 14px",
+                  borderBottom: i < staffSummary.length - 1 ? `1px solid ${T.border}` : "none", opacity: a.status === "inactive" ? .6 : 1 }}>
                   <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, color:T.text,
-                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{a.subjectName}</div>
-                    <div style={{ fontSize:12, color:T.muted }}>{a.sacramentType}</div>
+                    <div style={{ fontSize:15, fontWeight:600, color:T.text }}>{a.name} {a.status === "inactive" && <SPill s="inactive"/>}</div>
+                    <div style={{ fontSize:14, color:T.muted }}>{a.position} · last action {last ? fmtDT(last) : "—"}</div>
                   </div>
-                  <Badge status={a.status}/>
+                  <span style={{ fontSize:19, fontWeight:800, color:T.text }}>{total}</span>
                 </div>
               ))}
-            </div>
-            <div style={{ padding:"16px 22px", borderTop:`1px solid ${T.border}` }}>
-              <button onClick={() => setView("appointments")}
-                style={{ fontSize:13, color:T.primary, background:"none", border:"none", cursor:"pointer", padding:0 }}>
-                View all appointments
-              </button>
-            </div>
-          </Card>
+            </Card>
+          )}
+
+          {!isAdmin && (
+            <Card>
+              <CardHead title="Needs Attention" right={<button style={linkBtn} onClick={() => go("requests")}>All requests →</button>}/>
+              {appts.filter(a => a.status === "pending" || a.status === "verified").slice(0, 6).map((a, i, arr) => (
+                <button key={a.id} onClick={() => go("requests", { requestId:a.id })}
+                  style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"9px 14px",
+                    background:"none", border:"none", borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none", cursor:"pointer", textAlign:"left" }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontSize:15, fontWeight:600, color:T.text }}>{a.parishioner}</div>
+                    <div style={{ fontSize:14, color:T.muted }}>{a.id} · {a.sacramentType}</div>
+                  </div>
+                  <Badge status={a.status}/>
+                </button>
+              ))}
+            </Card>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-/* ─── APPOINTMENTS ───────────────────────────────────────── */
-function AppointmentsView({ appts, setAppts, push }:
-  { appts: Appointment[]; setAppts: React.Dispatch<React.SetStateAction<Appointment[]>>;
-    push: (t: Toast["type"], m: string) => void }) {
-  const [tab,       setTab]       = useState<"list"|"new">("list");
-  const [viewA,     setViewA]     = useState<Appointment|null>(null);
-  const [verifying, setVerifying] = useState<Appointment|null>(null);
-  const [schedNote, setSchedNote] = useState({ date:"", note:"" });
-  const tb = useTable<Appointment>(appts, ["id","parishioner","subjectName","sacramentType","status"] as (keyof Appointment)[], 10);
+/* ─── REQUESTS ───────────────────────────────────────────── */
+type SetA<X> = React.Dispatch<React.SetStateAction<X>>;
 
-  const updateStatus = (id: string, status: AppStatus, extra?: Partial<Appointment>) => {
-    setAppts(a => a.map(x => x.id === id ? { ...x, status, ...extra } : x));
-    push("success", `Appointment ${id} updated to ${status}.`);
-  };
+function SearchBox({ value, set, placeholder, width = 280 }: { value: string; set: (v: string) => void; placeholder: string; width?: number }) {
+  return <FI value={value} onChange={e => set(e.target.value)} placeholder={placeholder} style={{ width }}/>;
+}
 
-  const blank = { parishioner:"", contact:"", email:"", sacramentType:"", subjectName:"",
-    dateOfSacrament:"", purposeOf:"", referenceNo:"", staffNotes:"" };
-  const [form, setForm] = useState(blank);
-  const [ferr, setFerr] = useState<Record<string,string>>({});
-  const [busy, setBusy] = useState(false);
-  const sf = (k: string, v: string) => { setForm(p => ({ ...p, [k]:v })); setFerr(p => ({ ...p, [k]:"" })); };
+function EmptyRow({ cols, text }: { cols: number; text: string }) {
+  return <tr><td colSpan={cols} style={{ ...TD, textAlign:"center", color:T.muted, padding:"28px 12px" }}>{text}</td></tr>;
+}
 
-  async function submitNew(e: React.FormEvent) {
-    e.preventDefault();
-    const e2: Record<string,string> = {};
-    if (!form.parishioner.trim()) e2.parishioner = "Required";
-    if (!form.contact.trim())     e2.contact     = "Required";
-    if (!form.sacramentType)      e2.sacramentType = "Required";
-    if (!form.subjectName.trim()) e2.subjectName = "Required";
-    if (!form.purposeOf.trim())   e2.purposeOf   = "Required";
-    setFerr(e2); if (Object.keys(e2).length) return;
-    setBusy(true);
-    await new Promise(r => setTimeout(r, 700));
-    setAppts(p => [{ id:nid(), requestDate:todayISO(), status:"pending", scheduledDate:"", ...form }, ...p]);
-    push("success", `New appointment request submitted.`);
-    setForm(blank); setBusy(false); setTab("list");
+function ConflictPanel({ conflicts }: { conflicts: Conflict[] }) {
+  if (!conflicts.length) return <Notice tone="ok">No conflicts found for this date and time.</Notice>;
+  const hard = conflicts.some(c => c.hard);
+  return (
+    <Notice tone={hard ? "error" : "warn"}>
+      <div style={{ fontWeight:700, marginBottom:4 }}>
+        {hard ? "This date is a Closed Office Day. Scheduling is not allowed." : "Schedule conflict detected. This time overlaps with an existing parish activity."}
+      </div>
+      {conflicts.map((c, i) => <div key={i}>• <b>{c.label}</b>: {c.detail}</div>)}
+    </Notice>
+  );
+}
+
+function RequestsView({ appts, setAppts, activities, services, books, issuance, focusId, clearFocus, openMarriage }:
+  { appts: Appointment[]; setAppts: SetA<Appointment[]>; activities: Activity[]; services: Service[];
+    books: BookEntry[]; issuance: Issuance[]; focusId?: string; clearFocus: () => void; openMarriage: (id: string) => void }) {
+  const [filter, setFilter] = useState<ReqStatus | "all">("all");
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState<string | null>(focusId ?? null);
+  useEffect(() => { if (focusId) { setOpenId(focusId); clearFocus(); } }, [focusId]);
+
+  const rows = appts.filter(a => (filter === "all" || a.status === filter) &&
+    (!q || [a.id, a.parishioner, a.subjectName, a.sacramentType, a.orNo].some(v => v.toLowerCase().includes(q.toLowerCase()))))
+    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+
+  const open = appts.find(a => a.id === openId);
+  if (open) return <RequestDetail r={open} setAppts={setAppts} appts={appts} activities={activities} services={services}
+    books={books} issuance={issuance} onBack={() => setOpenId(null)} openMarriage={openMarriage}/>;
+
+  return (
+    <div>
+      <PageHead title="Requests" sub="All service requests from parishioners · one queue for every status"
+        right={<SearchBox value={q} set={setQ} placeholder="Search ID, name, service or OR No."/>}/>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
+        {(["all", ...REQ_STATUSES] as const).map(s => (
+          <button key={s} style={chipBtn(filter === s)} onClick={() => setFilter(s)}>
+            {s === "all" ? "All" : STATUS_CFG[s].label}
+            <span style={{ fontSize:13, color:T.muted }}>{s === "all" ? appts.length : appts.filter(a => a.status === s).length}</span>
+          </button>
+        ))}
+      </div>
+      <Card>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>{["ID","Client","Service","Submitted","Preferred Schedule","Approved Schedule","OR No.","Status",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.length === 0 && <EmptyRow cols={9} text="No requests match these filters."/>}
+              {rows.map(a => (
+                <tr key={a.id} style={{ borderTop:`1px solid ${T.border}`, cursor:"pointer" }} onClick={() => setOpenId(a.id)}
+                  onMouseEnter={e => (e.currentTarget.style.background = T.bg)} onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.id}</td>
+                  <td style={TD}><div style={{ fontWeight:600 }}>{a.parishioner}</div><div style={{ fontSize:14, color:T.muted }}>for {a.subjectName}</div></td>
+                  <td style={TD}><TypeTag type={a.sacramentType}/></td>
+                  <td style={{ ...TD, fontSize:15 }}>{fmtShort(a.submittedAt)}</td>
+                  <td style={{ ...TD, fontSize:15 }}>{a.prefDate ? `${fmtShort(a.prefDate)} · ${fmtTime(a.prefTime)}` : "—"}</td>
+                  <td style={{ ...TD, fontSize:15, fontWeight: a.apprDate ? 600 : 400 }}>{a.apprDate ? `${fmtShort(a.apprDate)} · ${fmtRange(a.apprStart, a.apprEnd)}` : "—"}</td>
+                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.orNo || "—"}</td>
+                  <td style={TD}><Badge status={a.status}/></td>
+                  <td style={TD}><button style={linkBtn}>Open →</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RequestDetail({ r, appts, setAppts, activities, services, books, issuance, onBack, openMarriage }:
+  { r: Appointment; appts: Appointment[]; setAppts: SetA<Appointment[]>; activities: Activity[]; services: Service[];
+    books: BookEntry[]; issuance: Issuance[]; onBack: () => void; openMarriage: (id: string) => void }) {
+  const { auth, push, log, go } = useApp();
+  const svc = services.find(s => s.name === r.sacramentType);
+  const schedulable = svc?.schedulable ?? false;
+  const [action, setAction] = useState<null | "verify" | "approve" | "reject" | "complete" | "cancel" | "or">(null);
+  const [orNo, setOrNo] = useState(r.orNo); const [orDate, setOrDate] = useState(r.orDate || todayISO());
+  const [orErr, setOrErr] = useState("");
+  const [ad, setAd] = useState(r.apprDate || r.prefDate); const [as_, setAs] = useState(r.apprStart || r.prefTime);
+  const [ae, setAe] = useState(r.apprEnd || (r.prefTime ? addMin(r.prefTime, svc?.duration ?? 60) : ""));
+  const [remarks, setRemarks] = useState(""); const [override, setOverride] = useState(""); const [apErr, setApErr] = useState("");
+
+  const conflicts = useMemo(() => findConflicts(ad, as_, ae, activities, appts, { reqId:r.id }), [ad, as_, ae, activities, appts, r.id]);
+  const hard = conflicts.some(c => c.hard);
+  const patch = (p: Partial<Appointment>) => setAppts(list => list.map(a => a.id === r.id ? { ...a, ...p } : a));
+  const base = { module:"Requests", client:r.parishioner, recordType:"Request", recordId:r.id };
+  const linkedBook = books.find(b => b.linkedRequestId === r.id);
+  const linkedCert = issuance.filter(i => i.requestId === r.id);
+
+  function doVerify() {
+    if (!orNo.trim()) { setOrErr("Official Receipt No. is required to verify."); return; }
+    if (appts.some(a => a.id !== r.id && a.orNo && a.orNo.toLowerCase() === orNo.trim().toLowerCase())) { setOrErr("This OR No. is already recorded on another request."); return; }
+    patch({ status:"verified", orNo:orNo.trim(), orDate, verifiedBy:auth.name, staffNotes: remarks || r.staffNotes });
+    log({ ...base, actionType:"Verify", desc:`${who(auth)} verified the ${r.sacramentType} request of ${r.parishioner} with OR No. ${orNo.trim()} at ${clock()}.`, reason:remarks,
+      prev:{ Status:"Pending" }, next:{ Status:"Verified", "OR No.":orNo.trim(), "Receipt Date":orDate } });
+    push("success", `${r.id} verified.`); setAction(null);
+  }
+  function doApprove() {
+    if (!ad || !as_ || !ae) { setApErr("Date, start time and end time are required."); return; }
+    if (toMin(ae) <= toMin(as_)) { setApErr("End time must be after start time."); return; }
+    if (hard) { setApErr("Closed Office Day — choose another date."); return; }
+    if (conflicts.length && auth.role !== "admin") { setApErr("Resolve the conflict or ask an Admin to approve with an override."); return; }
+    if (conflicts.length && !override.trim()) { setApErr("Enter an override reason to approve despite the conflict."); return; }
+    patch({ status:"scheduled", apprDate:ad, apprStart:as_, apprEnd:ae, staffNotes: remarks || r.staffNotes });
+    log({ ...base, actionType:"Approve Schedule", desc:`${who(auth)} approved the appointment request of ${r.parishioner} for ${fmt(ad)}, ${fmtRange(as_, ae)} at ${clock()}.`,
+      reason: [remarks, override && `Conflict override: ${override}`].filter(Boolean).join(" · "),
+      prev:{ Status:STATUS_CFG[r.status].label, "Approved Schedule": r.apprDate ? `${r.apprDate} ${r.apprStart}-${r.apprEnd}` : "—" },
+      next:{ Status:"Scheduled", "Approved Schedule":`${ad} ${as_}-${ae}` } });
+    if (override) log({ ...base, actionType:"Schedule conflict override", desc:`${who(auth)} approved ${r.id} despite a schedule conflict (${conflicts.map(c => c.label).join(", ")}).`, reason:override });
+    push("success", `${r.id} scheduled for ${fmtShort(ad)}.`); setAction(null);
+  }
+  function simple(status: ReqStatus, verb: string, actionType: string) {
+    return (reason: string) => {
+      patch({ status, staffNotes: reason || r.staffNotes });
+      log({ ...base, actionType, desc:`${who(auth)} ${verb} the ${r.sacramentType} request of ${r.parishioner} at ${clock()}.`, reason,
+        prev:{ Status:STATUS_CFG[r.status].label }, next:{ Status:STATUS_CFG[status].label } });
+      push(status === "completed" ? "success" : "info", `${r.id} marked ${STATUS_CFG[status].label}.`); setAction(null);
+    };
+  }
+  function saveOR(reason: string) {
+    if (!orNo.trim()) { push("error", "OR No. cannot be blank."); return; }
+    patch({ orNo:orNo.trim(), orDate });
+    log({ ...base, actionType:"Correct OR", desc:`${who(auth)} corrected the Official Receipt details of ${r.id} at ${clock()}.`, reason,
+      prev:{ "OR No.":r.orNo, "Receipt Date":r.orDate }, next:{ "OR No.":orNo.trim(), "Receipt Date":orDate } });
+    push("success", "Official Receipt updated."); setAction(null);
   }
 
-  const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 };
-  const tabBtn = (label: string, t: "list"|"new") => (
-    <button onClick={() => setTab(t)}
-      style={{ padding:"8px 14px", fontSize:14, fontWeight:tab===t?600:400,
-        color:tab===t?T.text:T.muted, background:"none", border:"none",
-        borderBottom:`2px solid ${tab===t?T.primary:"transparent"}`, cursor:"pointer" }}>
-      {label}
-    </button>
+  const open = r.status === "pending" || r.status === "verified" || r.status === "scheduled";
+  const section = (title: string, children: React.ReactNode, right?: React.ReactNode) => (
+    <Card><CardHead title={title} right={right}/><div style={{ padding:"6px 16px 12px" }}>{children}</div></Card>
   );
 
   return (
     <div>
-      <div style={{ marginBottom:16 }}>
-        <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Appointments</h1>
-      </div>
+      <button onClick={onBack} style={{ ...linkBtn, marginBottom:10 }}>← Back to Requests</button>
+      <PageHead title={`${r.sacramentType} · ${r.subjectName}`} sub={`${r.id} · submitted ${fmt(r.submittedAt)}`}
+        right={<><Badge status={r.status}/>
+          {r.sacramentType === "Marriage" && <Btn variant="outline" size="sm" onClick={() => openMarriage(r.id)}>Form 97 Intake</Btn>}
+          <Btn variant="outline" size="sm" onClick={() => go("book", { bookPrefill:r.id })}>{linkedBook ? `Book Entity ${linkedBook.id}` : "Encode Book Entity"}</Btn>
+          {PRINTABLE.includes(r.sacramentType) && <Btn variant="outline" size="sm" onClick={() => go("certificates", { certRequestId:r.id })}>Certificates</Btn>}
+        </>}/>
 
-      <div style={{ borderBottom:`1px solid ${T.border}`, marginBottom:16, display:"flex" }}>
-        {tabBtn("All Appointments", "list")}
-        {tabBtn("New Request", "new")}
-      </div>
-
-      {tab === "list" && (
-        <Card>
-          {/* Filters */}
-          <div style={{ display:"flex", gap:12, padding:"12px 16px", borderBottom:`1px solid ${T.border}`, flexWrap:"wrap" }}>
-            <input type="search" placeholder="Search..." value={tb.search}
-              onChange={e => { tb.setSearch(e.target.value); tb.setPage(1); }}
-              style={{ ...inp, width:256 }}/>
-            <FS value={tb.fKey==="status"?tb.fVal:""} style={{ width:140 }}
-              onChange={e => { tb.setFKey("status"); tb.setFVal(e.target.value); tb.setPage(1); }}>
-              <option value="">All Statuses</option>
-              {(["pending","verified","scheduled","completed","cancelled"] as AppStatus[]).map(s =>
-                <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
-            </FS>
-            <FS value={tb.fKey==="sacramentType"?tb.fVal:""} style={{ width:180 }}
-              onChange={e => { tb.setFKey("sacramentType"); tb.setFVal(e.target.value); tb.setPage(1); }}>
-              <option value="">All Types</option>
-              {SACR_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-            </FS>
-            {(tb.search || tb.fVal) && (
-              <Btn variant="ghost" size="sm" onClick={() => { tb.setSearch(""); tb.setFVal(""); tb.setFKey(""); tb.setPage(1); }}>Clear</Btn>
-            )}
-          </div>
-
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr>
-                  <th style={TH}>Ref. No.</th>
-                  <SortTh label="Parishioner" field="parishioner" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("parishioner")}/>
-                  <th style={TH}>Subject Name</th>
-                  <th style={TH}>Sacrament Type</th>
-                  <SortTh label="Date Requested" field="requestDate" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("requestDate")}/>
-                  <SortTh label="Status" field="status" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("status")}/>
-                  <th style={{ ...TH, textAlign:"right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tb.paged.length === 0 && (
-                  <tr><td colSpan={7} style={{ ...TD, textAlign:"center", color:T.muted, padding:32 }}>No records found.</td></tr>
-                )}
-                {tb.paged.map((a, i) => (
-                  <tr key={a.id} style={{ background: i%2===1 ? T.bg : T.surface }}
-                    onMouseEnter={e => (e.currentTarget.style.background = T.priLight)}
-                    onMouseLeave={e => (e.currentTarget.style.background = i%2===1 ? T.bg : T.surface)}>
-                    <td style={{ ...TD, fontFamily:"monospace", fontSize:12, color:T.muted }}>{a.id}</td>
-                    <td style={{ ...TD, fontWeight:500 }}>{a.parishioner}</td>
-                    <td style={TD}>{a.subjectName}</td>
-                    <td style={TD}><TypeTag type={a.sacramentType}/></td>
-                    <td style={{ ...TD, color:T.muted, fontSize:13 }}>{fmtShort(a.requestDate)}</td>
-                    <td style={TD}><Badge status={a.status}/></td>
-                    <td style={{ ...TD, textAlign:"right", whiteSpace:"nowrap" }}>
-                      <Btn variant="ghost" size="sm" style={{ marginRight:4 }} onClick={() => setViewA(a)}>View</Btn>
-                      {a.status === "pending"    && <Btn variant="outline" size="sm" onClick={() => setVerifying(a)}>Verify</Btn>}
-                      {a.status === "verified"   && <Btn variant="outline" size="sm" onClick={() => setVerifying(a)}>Schedule</Btn>}
-                      {a.status === "scheduled"  && <Btn variant="primary" size="sm" onClick={() => updateStatus(a.id,"completed")}>Complete</Btn>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-            padding:"10px 16px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
-            <span style={{ fontSize:13, color:T.muted }}>Showing {tb.paged.length} of {tb.total}</span>
-            <Paginator page={tb.page} total={tb.totalPages} set={tb.setPage}/>
-          </div>
-        </Card>
-      )}
-
-      {tab === "new" && (
-        <Card style={{ maxWidth:820 }}>
-          <CardHead title="New Appointment Request" sub="Submit a sacramental certificate request"/>
-          <form onSubmit={submitNew} noValidate style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1.5fr 1fr", gap:16, alignItems:"start" }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {section("Request Information", <>
+            <KV k="Request ID" v={r.id} mono/><KV k="Service" v={<TypeTag type={r.sacramentType}/>}/>
+            <KV k="Subject / Recipient" v={r.subjectName}/><KV k="Date of Sacrament" v={r.dateOfSacrament ? fmt(r.dateOfSacrament) : ""}/>
+            <KV k="Purpose" v={r.purposeOf}/><KV k="Submitted" v={fmt(r.submittedAt)}/>
+            <KV k="Base fee" v={svc ? peso(svc.fee) : ""}/><KV k="Staff remarks" v={r.staffNotes}/>
+          </>)}
+          {section("Client Information", <>
+            <KV k="Client" v={r.parishioner}/><KV k="Contact" v={r.contact}/><KV k="Email" v={r.email}/><KV k="Address" v={r.address}/>
+          </>)}
+          {section("Schedule", schedulable ? (
             <div style={g2}>
-              <div><FL req>Parishioner Name</FL><FI value={form.parishioner} placeholder="Full name" onChange={e => sf("parishioner",e.target.value)}/>{ferr.parishioner&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.parishioner}</p>}</div>
-              <div><FL req>Contact Number</FL><FI value={form.contact} placeholder="09XX-XXX-XXXX" onChange={e => sf("contact",e.target.value)}/>{ferr.contact&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.contact}</p>}</div>
-            </div>
-            <div><FL>Email Address</FL><FI type="email" value={form.email} placeholder="email@example.com" onChange={e => sf("email",e.target.value)}/></div>
-            <div>
-              <FL req>Sacrament / Service Type</FL>
-              <FS value={form.sacramentType} onChange={e => sf("sacramentType",e.target.value)}>
-                <option value="" disabled>Select type...</option>
-                {SACR_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-              </FS>
-              {ferr.sacramentType && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.sacramentType}</p>}
-            </div>
-            <div><FL req>Subject Name</FL><FI value={form.subjectName} placeholder="Name as it appears in the register" onChange={e => sf("subjectName",e.target.value)}/>{ferr.subjectName&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.subjectName}</p>}</div>
-            <div style={g2}>
-              <div><FL>Date of Sacrament</FL><FI type="date" value={form.dateOfSacrament} onChange={e => sf("dateOfSacrament",e.target.value)}/></div>
-              <div><FL>Reference / Payment No.</FL><FI value={form.referenceNo} placeholder="GCash or bank ref." onChange={e => sf("referenceNo",e.target.value)}/></div>
-            </div>
-            <div><FL req>Purpose of Request</FL><FI value={form.purposeOf} placeholder="e.g., School enrollment, employment..." onChange={e => sf("purposeOf",e.target.value)}/>{ferr.purposeOf&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.purposeOf}</p>}</div>
-            <div><FL>Additional Notes</FL><FT value={form.staffNotes} rows={3} placeholder="Special instructions..." onChange={e => sf("staffNotes",e.target.value)}/></div>
-            <Divider/>
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-              <Btn variant="ghost" type="button" onClick={() => { setForm(blank); setFerr({}); }}>Clear</Btn>
-              <Btn variant="primary" type="submit" disabled={busy}>{busy ? "Submitting..." : "Submit Request"}</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {/* View modal */}
-      <Modal open={!!viewA} title={viewA?.id ?? ""} onClose={() => setViewA(null)}
-        footer={<><Btn variant="ghost" onClick={() => setViewA(null)}>Close</Btn>
-          {viewA?.status==="pending" && <Btn variant="primary" onClick={() => { setVerifying(viewA); setViewA(null); }}>Verify</Btn>}</>}>
-        {viewA && (
-          <dl style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:"8px 20px", fontSize:14 }}>
-            {([["ID",viewA.id],["Parishioner",viewA.parishioner],["Contact",viewA.contact],["Email",viewA.email||"—"],
-              ["Subject",viewA.subjectName],["Sacrament",viewA.sacramentType],
-              ["Date of Sacrament",fmt(viewA.dateOfSacrament)],["Purpose",viewA.purposeOf],
-              ["Reference No.",viewA.referenceNo||"—"],["Scheduled",viewA.scheduledDate?fmt(viewA.scheduledDate):"—"],
-              ["Notes",viewA.staffNotes||"—"]] as [string,string][]).map(([k,v]) => (
-              <div key={k} style={{ display:"contents" }}>
-                <dt style={{ fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",color:T.muted,paddingTop:2 }}>{k}</dt>
-                <dd style={{ color:T.text }}>{v}</dd>
+              <div style={{ padding:12, border:`1px dashed ${T.borderMd}`, borderRadius:6 }}>
+                <div style={secLabel}>Preferred by client</div>
+                <div style={{ fontSize:17, fontWeight:600, marginTop:4 }}>{r.prefDate ? fmt(r.prefDate) : "—"}</div>
+                <div style={{ fontSize:15, color:T.sub }}>{r.prefTime ? fmtTime(r.prefTime) : ""}</div>
+                <div style={{ fontSize:14, color:T.muted, marginTop:6 }}>Request only — not a confirmed schedule.</div>
               </div>
-            ))}
-            <div style={{ display:"contents" }}><dt style={{ fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",color:T.muted }}>Status</dt><dd><Badge status={viewA.status}/></dd></div>
-          </dl>
-        )}
+              <div style={{ padding:12, border:`1px solid ${r.apprDate ? T.greenB : T.border}`, background: r.apprDate ? T.greenL : T.bg, borderRadius:6 }}>
+                <div style={secLabel}>Approved by parish</div>
+                <div style={{ fontSize:17, fontWeight:600, marginTop:4 }}>{r.apprDate ? fmt(r.apprDate) : "Not yet approved"}</div>
+                <div style={{ fontSize:15, color:T.sub }}>{r.apprDate ? fmtRange(r.apprStart, r.apprEnd) : ""}</div>
+                {r.apprDate && <div style={{ fontSize:14, color:"#166534", marginTop:6 }}>Shown on the Calendar as an appointment.</div>}
+              </div>
+            </div>
+          ) : <p style={{ fontSize:16, color:T.muted, margin:"6px 0" }}>{r.sacramentType} is a document service and is not scheduled on the Calendar.</p>)}
+        </div>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {section("Official Receipt", <>
+            <KV k="OR No." v={r.orNo} mono/><KV k="Receipt Date" v={r.orDate ? fmt(r.orDate) : ""}/><KV k="Verified by" v={r.verifiedBy}/>
+            <p style={{ fontSize:14, color:T.muted, margin:"8px 0 0" }}>Payment is made at the parish office. Record the OR issued by the cashier.</p>
+          </>, r.orNo ? <button style={linkBtn} onClick={() => { setOrNo(r.orNo); setOrDate(r.orDate); setAction("or"); }}>Correct</button> : undefined)}
+
+          {section("Actions", <div style={{ display:"flex", flexDirection:"column", gap:8, paddingTop:6 }}>
+            {r.status === "pending" && <Btn onClick={() => { setOrErr(""); setRemarks(""); setAction("verify"); }}>Verify (record OR)</Btn>}
+            {schedulable && (r.status === "verified" || r.status === "scheduled") &&
+              <Btn onClick={() => { setApErr(""); setOverride(""); setRemarks(""); setAction("approve"); }}>{r.status === "scheduled" ? "Reschedule" : "Approve Schedule"}</Btn>}
+            {(r.status === "scheduled" || (r.status === "verified" && !schedulable)) && <Btn variant="outline" onClick={() => setAction("complete")}>Mark Completed</Btn>}
+            {(r.status === "pending" || r.status === "verified") && <Btn variant="danger" onClick={() => setAction("reject")}>Reject</Btn>}
+            {open && <Btn variant="ghost" onClick={() => setAction("cancel")}>Cancel Request</Btn>}
+            {!open && <p style={{ fontSize:15, color:T.muted, margin:0 }}>This request is {STATUS_CFG[r.status].label.toLowerCase()}. No further actions.</p>}
+          </div>)}
+
+          {linkedCert.length > 0 && section("Certificates Issued", linkedCert.map(c => (
+            <KV key={c.id} k={c.certNo} v={<span>{fmtDT(c.issuedAt)} <SPill s={c.status}/></span>}/>
+          )))}
+        </div>
+      </div>
+
+      {/* Verify */}
+      <Modal open={action === "verify"} title={`Verify ${r.id}`} onClose={() => setAction(null)}
+        footer={<><Btn variant="ghost" onClick={() => setAction(null)}>Cancel</Btn><Btn onClick={doVerify}>Verify Request</Btn></>}>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <Notice>Confirm the requirements are complete and the fee was paid at the parish office.</Notice>
+          <div style={g2}>
+            <div><FL req>OR No.</FL><FI value={orNo} onChange={e => { setOrNo(e.target.value); setOrErr(""); }} placeholder="OR-2026-000000"/></div>
+            <div><FL req>Receipt Date</FL><FI type="date" value={orDate} onChange={e => setOrDate(e.target.value)}/></div>
+          </div>
+          <Err m={orErr}/>
+          <div><FL>Remarks</FL><FT rows={2} value={remarks} onChange={e => setRemarks(e.target.value)}/></div>
+        </div>
       </Modal>
 
-      {/* Verify/Schedule modal */}
-      <Modal open={!!verifying}
-        title={verifying?.status==="pending" ? "Verify Appointment" : "Schedule Appointment"}
-        onClose={() => setVerifying(null)}
-        footer={<>
-          <Btn variant="ghost" onClick={() => setVerifying(null)}>Cancel</Btn>
-          <Btn variant="primary" onClick={() => {
-            if (!verifying) return;
-            if (verifying.status==="pending") updateStatus(verifying.id,"verified",{ staffNotes:schedNote.note||verifying.staffNotes });
-            else updateStatus(verifying.id,"scheduled",{ scheduledDate:schedNote.date, staffNotes:schedNote.note||verifying.staffNotes });
-            setVerifying(null); setSchedNote({date:"",note:""});
-          }}>{verifying?.status==="pending" ? "Mark Verified" : "Confirm Schedule"}</Btn>
-        </>}>
-        {verifying && (
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <div style={{ padding:"10px 16px", background:T.bg, border:`1px solid ${T.border}`, borderRadius:6, fontSize:14 }}>
-              <strong>{verifying.id}</strong> — {verifying.subjectName} ({verifying.sacramentType})
+      {/* Approve */}
+      <Modal open={action === "approve"} title={`Approve Schedule · ${r.id}`} onClose={() => setAction(null)} maxW={560}
+        footer={<><Btn variant="ghost" onClick={() => setAction(null)}>Cancel</Btn><Btn onClick={doApprove} disabled={hard}>Approve Schedule</Btn></>}>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {r.prefDate && <div style={{ fontSize:15, color:T.sub }}>Client preferred: <b>{fmt(r.prefDate)} · {fmtTime(r.prefTime)}</b></div>}
+          <div style={g3}>
+            <div><FL req>Date</FL><FI type="date" value={ad} onChange={e => { setAd(e.target.value); setApErr(""); }}/></div>
+            <div><FL req>Start</FL><FI type="time" value={as_} onChange={e => { setAs(e.target.value); if (!ae || toMin(ae) <= toMin(e.target.value)) setAe(addMin(e.target.value, svc?.duration ?? 60)); setApErr(""); }}/></div>
+            <div><FL req>End</FL><FI type="time" value={ae} onChange={e => { setAe(e.target.value); setApErr(""); }}/></div>
+          </div>
+          {ad && as_ && ae && <ConflictPanel conflicts={conflicts}/>}
+          {conflicts.length > 0 && !hard && auth.role === "admin" && (
+            <div><FL>Override reason (Admin)</FL><FI value={override} onChange={e => setOverride(e.target.value)} placeholder="Why this overlap is acceptable"/></div>
+          )}
+          {conflicts.length > 0 && !hard && auth.role !== "admin" && <p style={{ fontSize:14, color:T.muted, margin:0 }}>Only an Admin can approve over a conflict.</p>}
+          <div><FL>Remarks</FL><FT rows={2} value={remarks} onChange={e => setRemarks(e.target.value)}/></div>
+          <Err m={apErr}/>
+        </div>
+      </Modal>
+
+      <ConfirmModal open={action === "reject"} title={`Reject ${r.id}`} danger confirmLabel="Reject Request"
+        message={<>Reject the {r.sacramentType} request of <b>{r.parishioner}</b>? The client will be informed of the reason.</>}
+        reasonLabel="Rejection reason" reasonRequired onClose={() => setAction(null)} onConfirm={simple("rejected", "rejected", "Reject")}/>
+      <ConfirmModal open={action === "complete"} title={`Complete ${r.id}`} confirmLabel="Mark Completed"
+        message="Mark this request as completed. The service has been rendered." reasonLabel="Remarks" onClose={() => setAction(null)}
+        onConfirm={simple("completed", "completed", "Complete")}/>
+      <ConfirmModal open={action === "cancel"} title={`Cancel ${r.id}`} danger confirmLabel="Cancel Request"
+        message="Cancel this request? It stays on file with status Cancelled and its schedule is released from the Calendar."
+        reasonLabel="Cancellation reason" reasonRequired onClose={() => setAction(null)} onConfirm={simple("cancelled", "cancelled", "Cancel")}/>
+      <ConfirmModal open={action === "or"} title="Correct Official Receipt" confirmLabel="Save Correction"
+        message="Corrections to receipt details are recorded in the Activity Log." reasonLabel="Reason for correction" reasonRequired
+        onClose={() => setAction(null)} onConfirm={saveOR}>
+        <div style={g2}>
+          <div><FL req>OR No.</FL><FI value={orNo} onChange={e => setOrNo(e.target.value)}/></div>
+          <div><FL req>Receipt Date</FL><FI type="date" value={orDate} onChange={e => setOrDate(e.target.value)}/></div>
+        </div>
+      </ConfirmModal>
+    </div>
+  );
+}
+
+/* ─── CALENDAR ───────────────────────────────────────────── */
+const WEEKDAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const BLANK_ACT = (date: string): Activity => ({ id:"", category:"Holy Mass", title:"", date, ...A0, start:"08:00", end:"09:00", priests:[] });
+
+function CalendarView({ activities, setActivities, appts }:
+  { activities: Activity[]; setActivities: SetA<Activity[]>; appts: Appointment[] }) {
+  const { auth, push, log, go } = useApp();
+  const t = new Date();
+  const [ym, setYm] = useState({ y:t.getFullYear(), m:t.getMonth() });
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [catF, setCatF] = useState<string>("all");
+  const [day, setDay] = useState<string | null>(null);
+  const [edit, setEdit] = useState<Activity | null>(null);
+  const [cancelAct, setCancelAct] = useState<Activity | null>(null);
+
+  const iso = (d: number) => `${ym.y}-${pad(ym.m + 1)}-${pad(d)}`;
+  const first = new Date(ym.y, ym.m, 1).getDay();
+  const days = new Date(ym.y, ym.m + 1, 0).getDate();
+  const cells = [...Array(first).fill(null), ...Array.from({ length:days }, (_, i) => i + 1)];
+  while (cells.length % 7) cells.push(null);
+
+  const actsOn = (d: string) => activities.filter(a => a.date === d && (showCancelled || a.status === "active") && (catF === "all" || a.category === catF))
+    .sort((a, b) => (a.allDay ? "" : a.start).localeCompare(b.allDay ? "" : b.start));
+  const apptsOn = (d: string) => appts.filter(r => r.status === "scheduled" && r.apprDate === d).sort((a, b) => a.apprStart.localeCompare(b.apprStart));
+  const move = (n: number) => setYm(p => { const d = new Date(p.y, p.m + n, 1); return { y:d.getFullYear(), m:d.getMonth() }; });
+
+  return (
+    <div>
+      <PageHead title="Calendar of Activities" sub="Approved appointments come from Requests (read-only). Parish activities are added here."
+        right={<><Btn variant="outline" size="sm" onClick={() => move(-1)}>‹</Btn>
+          <span style={{ fontSize:17, fontWeight:700, minWidth:140, textAlign:"center" }}>{new Date(ym.y, ym.m, 1).toLocaleDateString("en-PH",{ month:"long", year:"numeric" })}</span>
+          <Btn variant="outline" size="sm" onClick={() => move(1)}>›</Btn>
+          <Btn variant="ghost" size="sm" onClick={() => setYm({ y:t.getFullYear(), m:t.getMonth() })}>Today</Btn>
+          <Btn size="sm" onClick={() => setEdit(BLANK_ACT(todayISO()))}>+ Add Activity</Btn></>}/>
+
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center", marginBottom:12 }}>
+        <button style={chipBtn(catF === "all")} onClick={() => setCatF("all")}>All categories</button>
+        {ACTIVITY_CAT_LIST.map(c => (
+          <button key={c} style={chipBtn(catF === c)} onClick={() => setCatF(c)}>
+            <span style={{ width:8, height:8, borderRadius:2, background:ACTIVITY_CATS[c].col }}/>{c}
+          </button>
+        ))}
+        <span style={{ flex:1 }}/>
+        <Toggle on={showCancelled} set={setShowCancelled} label="Show cancelled"/>
+      </div>
+
+      <Card>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
+          {WEEKDAYS.map(w => <div key={w} style={{ ...TH, textAlign:"center", borderBottom:`1px solid ${T.border}` }}>{w}</div>)}
+          {cells.map((d, i) => {
+            if (!d) return <div key={i} style={{ minHeight:104, background:T.bg, borderRight:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}` }}/>;
+            const ds = iso(d); const acts = actsOn(ds); const ap = apptsOn(ds);
+            const closed = activities.some(a => a.date === ds && a.status === "active" && a.category === "Closed Office Day");
+            const today = ds === todayISO();
+            const items = [...ap.map(r => ({ k:r.id, appt:true, label:`${fmtTime(r.apprStart)} ${r.sacramentType}`, col:SACR[r.sacramentType]?.col ?? T.sub, cancelled:false })),
+              ...acts.map(a => ({ k:a.id, appt:false, label:`${a.allDay ? "" : fmtTime(a.start) + " "}${a.title}`, col:ACTIVITY_CATS[a.category]?.col ?? T.sub, cancelled:a.status === "cancelled" }))];
+            return (
+              <button key={i} onClick={() => setDay(ds)}
+                style={{ minHeight:104, padding:6, textAlign:"left", verticalAlign:"top", border:"none", borderRight:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`,
+                  cursor:"pointer", display:"flex", flexDirection:"column", gap:3,
+                  background: closed ? "repeating-linear-gradient(135deg,#FEF2F2 0 6px,#FFFFFF 6px 12px)" : "#fff" }}
+                onMouseEnter={e => { if (!closed) e.currentTarget.style.background = T.priLight; }}
+                onMouseLeave={e => { if (!closed) e.currentTarget.style.background = "#fff"; }}>
+                <span style={{ fontSize:15, fontWeight:700, color: today ? "#fff" : T.text, background: today ? T.primary : "transparent",
+                  borderRadius:99, width:22, height:22, display:"inline-flex", alignItems:"center", justifyContent:"center" }}>{d}</span>
+                {items.slice(0, 3).map(it => (
+                  <span key={it.k} style={{ fontSize:13, lineHeight:1.3, padding:"2px 5px", borderRadius:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", width:"100%",
+                    ...(it.appt ? { background:"#fff", border:`1px solid ${it.col}`, color:it.col, fontWeight:600 }
+                      : { background:it.col, color:"#fff", opacity: it.cancelled ? .4 : 1, textDecoration: it.cancelled ? "line-through" : "none" }) }}>
+                    {it.appt ? "◆ " : ""}{it.label}
+                  </span>
+                ))}
+                {items.length > 3 && <span style={{ fontSize:13, color:T.muted }}>+{items.length - 3} more</span>}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+      <div style={{ display:"flex", gap:16, marginTop:10, fontSize:14, color:T.sub }}>
+        <span><span style={{ padding:"0 5px", border:`1px solid ${T.sub}`, borderRadius:3 }}>◆</span> Approved appointment (from Requests)</span>
+        <span><span style={{ padding:"0 8px", background:T.sub, borderRadius:3 }}/> Parish activity</span>
+        <span><span style={{ padding:"0 8px", background:"repeating-linear-gradient(135deg,#FECACA 0 3px,#fff 3px 6px)", border:`1px solid ${T.redB}` }}/> Closed Office Day — blocks all scheduling</span>
+      </div>
+
+      {/* Day detail */}
+      <Modal open={!!day} title={day ? fmt(day) : ""} onClose={() => setDay(null)} maxW={620}
+        footer={<Btn onClick={() => { const d = day!; setDay(null); setEdit(BLANK_ACT(d)); }}>+ Add Activity on this day</Btn>}>
+        {day && (() => {
+          const ap = apptsOn(day); const acts = activities.filter(a => a.date === day && (showCancelled || a.status === "active"));
+          return (
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <div>
+                <div style={secLabel}>Approved appointments · read-only</div>
+                {ap.length === 0 && <p style={{ fontSize:15, color:T.muted, margin:"4px 0" }}>None.</p>}
+                {ap.map(r => (
+                  <div key={r.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 10px", marginTop:6, border:`1px solid ${T.border}`, borderRadius:6 }}>
+                    <div><div style={{ fontSize:16, fontWeight:600 }}>{r.sacramentType} — {r.subjectName}</div>
+                      <div style={{ fontSize:14, color:T.muted }}>{fmtRange(r.apprStart, r.apprEnd)} · {r.id} · {r.parishioner}</div></div>
+                    <button style={linkBtn} onClick={() => { setDay(null); go("requests", { requestId:r.id }); }}>Open Request →</button>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={secLabel}>Parish activities</div>
+                {acts.length === 0 && <p style={{ fontSize:15, color:T.muted, margin:"4px 0" }}>None.</p>}
+                {acts.map(a => (
+                  <div key={a.id} style={{ padding:"8px 10px", marginTop:6, border:`1px solid ${T.border}`, borderLeft:`3px solid ${ACTIVITY_CATS[a.category]?.col}`, borderRadius:6, opacity: a.status === "cancelled" ? .6 : 1 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}>
+                      <div>
+                        <div style={{ fontSize:16, fontWeight:600 }}>{a.title} {a.status === "cancelled" && <SPill s="cancelled"/>}</div>
+                        <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:3, flexWrap:"wrap" }}>
+                          <CatTag cat={a.category}/><span style={{ fontSize:14, color:T.muted }}>{fmtRange(a.start, a.end, a.allDay)} · {a.location}{a.blocking ? " · blocking" : ""}</span>
+                        </div>
+                        {a.priests.length > 0 && <div style={{ fontSize:14, color:T.sub, marginTop:3 }}>Priest(s): {a.priests.join("; ")}</div>}
+                        {a.notes && <div style={{ fontSize:14, color:T.sub, marginTop:2 }}>{a.notes}</div>}
+                        {a.cancelReason && <div style={{ fontSize:14, color:T.red, marginTop:2 }}>Cancelled: {a.cancelReason}</div>}
+                      </div>
+                      {a.status === "active" && <div style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                        <button style={linkBtn} onClick={() => { setDay(null); setEdit(a); }}>Edit</button>
+                        <button style={{ ...linkBtn, color:T.red }} onClick={() => setCancelAct(a)}>Cancel</button>
+                      </div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            {verifying.status==="verified" && (
-              <div><FL req>Scheduled Date</FL><FI type="date" value={schedNote.date} min={todayISO()} onChange={e => setSchedNote(p => ({...p,date:e.target.value}))}/></div>
-            )}
-            <div><FL>Staff Notes</FL><FT rows={3} value={schedNote.note} placeholder="Verification notes, book volume/page..." onChange={e => setSchedNote(p => ({...p,note:e.target.value}))}/></div>
+          );
+        })()}
+      </Modal>
+
+      <ActivityModal act={edit} onClose={() => setEdit(null)} activities={activities} appts={appts}
+        onSave={(a, reason) => {
+          const isNew = !a.id;
+          const saved = isNew ? { ...a, id:nextActId() } : a;
+          const prev = activities.find(x => x.id === a.id);
+          setActivities(list => isNew ? [...list, saved] : list.map(x => x.id === a.id ? saved : x));
+          log({ module:"Calendar", actionType: isNew ? "Add Activity" : "Edit Activity", recordType:"Calendar Activity", recordId:saved.id, reason,
+            desc: isNew ? `${who(auth)} added the ${a.category} "${a.title}" on ${fmt(a.date)} at ${clock()}.` : `${who(auth)} edited the ${a.category} "${a.title}" at ${clock()}.`,
+            prev: prev ? { Date:prev.date, Time:fmtRange(prev.start, prev.end, prev.allDay), Title:prev.title, Location:prev.location } : undefined,
+            next: { Date:a.date, Time:fmtRange(a.start, a.end, a.allDay), Title:a.title, Location:a.location } });
+          push("success", isNew ? "Activity added to the Calendar." : "Activity updated."); setEdit(null);
+        }}/>
+
+      <ConfirmModal open={!!cancelAct} title="Cancel Activity" danger confirmLabel="Cancel Activity"
+        message={<>Cancel <b>{cancelAct?.title}</b>? It stays on record with status Cancelled and no longer blocks scheduling.</>}
+        reasonLabel="Cancellation reason" reasonRequired onClose={() => setCancelAct(null)}
+        onConfirm={reason => {
+          const a = cancelAct!;
+          setActivities(list => list.map(x => x.id === a.id ? { ...x, status:"cancelled", cancelReason:reason } : x));
+          log({ module:"Calendar", actionType:"Cancel Activity", recordType:"Calendar Activity", recordId:a.id, reason,
+            desc:`${who(auth)} cancelled the ${a.category} "${a.title}" on ${fmt(a.date)} at ${clock()}.`, prev:{ Status:"Active" }, next:{ Status:"Cancelled" } });
+          push("info", "Activity cancelled."); setCancelAct(null);
+        }}/>
+    </div>
+  );
+}
+
+function ActivityModal({ act, onClose, onSave, activities, appts }:
+  { act: Activity | null; onClose: () => void; onSave: (a: Activity, reason: string) => void; activities: Activity[]; appts: Appointment[] }) {
+  const [a, setA] = useState<Activity | null>(act);
+  const [reason, setReason] = useState(""); const [err, setErr] = useState("");
+  useEffect(() => { setA(act); setReason(""); setErr(""); }, [act]);
+  const conflicts = useMemo(() => a && a.category !== "Closed Office Day" && a.blocking
+    ? findConflicts(a.date, a.allDay ? "00:00" : a.start, a.allDay ? "23:59" : a.end, activities, appts, { actId:a.id }) : [], [a, activities, appts]);
+  if (!a) return null;
+  const set = (p: Partial<Activity>) => { setA({ ...a, ...p }); setErr(""); };
+  const isEdit = !!a.id;
+  const isMass = MASS_CATS.includes(a.category);
+  function save() {
+    if (!a) return;
+    if (!a.title.trim() || !a.date) { setErr("Title and date are required."); return; }
+    if (!a.allDay && (!a.start || !a.end || toMin(a.end) <= toMin(a.start))) { setErr("Enter a start and end time; end must be after start."); return; }
+    if (isEdit && !reason.trim()) { setErr("A Reason for Change is required when editing."); return; }
+    if (conflicts.some(c => c.hard)) { setErr("This date is a Closed Office Day."); return; }
+    onSave({ ...a, title:a.title.trim() }, reason.trim());
+  }
+  return (
+    <Modal open title={isEdit ? `Edit Activity · ${a.id}` : "Add Activity"} onClose={onClose} maxW={640}
+      footer={<><Btn variant="ghost" onClick={onClose}>Close</Btn><Btn onClick={save}>{isEdit ? "Save Changes" : "Add to Calendar"}</Btn></>}>
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div style={g2}>
+          <div><FL req>Category</FL><FS value={a.category} onChange={e => set({ category:e.target.value, blocking: e.target.value === "Closed Office Day" ? true : a.blocking, allDay: ["Closed Office Day","Holiday"].includes(e.target.value) ? true : a.allDay })}>
+            {ACTIVITY_CAT_LIST.map(c => <option key={c}>{c}</option>)}</FS></div>
+          <div><FL>Status</FL><FS value={a.status} disabled={!isEdit} onChange={e => set({ status:e.target.value as Activity["status"] })}><option value="active">Active</option><option value="cancelled" disabled>Cancelled (use Cancel)</option></FS></div>
+        </div>
+        <div><FL req>Title</FL><FI value={a.title} onChange={e => set({ title:e.target.value })} placeholder={a.category === "Fiesta Mass" ? "e.g. Fiesta of Sto. Niño — Parish of Sta. Cruz" : "Activity title"}/></div>
+        <div style={g3}>
+          <div><FL req>Date</FL><FI type="date" value={a.date} onChange={e => set({ date:e.target.value })}/></div>
+          <div><FL req={!a.allDay}>Start</FL><FI type="time" value={a.start} disabled={a.allDay} onChange={e => set({ start:e.target.value })}/></div>
+          <div><FL req={!a.allDay}>End</FL><FI type="time" value={a.end} disabled={a.allDay} onChange={e => set({ end:e.target.value })}/></div>
+        </div>
+        <div style={g2}>
+          <Toggle on={a.allDay} set={v => set({ allDay:v })} label="All-day"/>
+          <Toggle on={a.blocking} set={v => set({ blocking:v })} disabled={a.category === "Closed Office Day"} label="Blocking"
+            hint={a.category === "Closed Office Day" ? "Closed Office Days always block scheduling" : "Prevents overlapping appointments"}/>
+        </div>
+        <div><FL>Location</FL><FI value={a.location} onChange={e => set({ location:e.target.value })}/></div>
+        {isMass && (
+          <div>
+            <FL>Priest(s)</FL>
+            <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:2 }}>
+              {PRIESTS.map(p => (
+                <label key={p} style={{ fontSize:16, display:"flex", gap:8, alignItems:"center", cursor:"pointer" }}>
+                  <input type="checkbox" checked={a.priests.includes(p)} style={{ accentColor:T.primary }}
+                    onChange={e => set({ priests: e.target.checked ? [...a.priests, p] : a.priests.filter(x => x !== p) })}/>{p}
+                </label>
+              ))}
+            </div>
+            {a.category === "Fiesta Mass" && <p style={{ fontSize:14, color:T.muted, margin:"6px 0 0" }}>For a fiesta in another parish or diocese, set the Location to that parish and note "concelebrating" in Notes. Turn off Blocking if the PdSPA office stays open.</p>}
           </div>
         )}
+        <div><FL>Notes</FL><FT rows={2} value={a.notes} onChange={e => set({ notes:e.target.value })}/></div>
+        {conflicts.length > 0 && <ConflictPanel conflicts={conflicts}/>}
+        {isEdit && <div><FL req>Reason for Change</FL><FT rows={2} value={reason} onChange={e => { setReason(e.target.value); setErr(""); }} placeholder="Recorded in the Activity Log"/></div>}
+        <Err m={err}/>
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── BOOK ENTITY ────────────────────────────────────────── */
+function BookEntityView({ books, setBooks, appts, prefill, clearFocus }:
+  { books: BookEntry[]; setBooks: SetA<BookEntry[]>; appts: Appointment[]; prefill?: string; clearFocus: () => void }) {
+  const { auth, push, log, go } = useApp();
+  const [q, setQ] = useState(""); const [typeF, setTypeF] = useState("all"); const [statusF, setStatusF] = useState("all");
+  const [form, setForm] = useState<BookEntry | null>(null);
+  const [view, setView] = useState<BookEntry | null>(null);
+  const [correct, setCorrect] = useState<BookEntry | null>(null);
+  const [err, setErr] = useState("");
+
+  const blank = (req?: Appointment): BookEntry => {
+    const bt = BOOK_TYPE_LIST.find(k => BOOK_TYPES[k] === req?.sacramentType) ?? "Baptismal Register";
+    return { id:"", bookType:bt, bookNo:"", page:"", entryNo:"", dateOfArrival:"", sacramentType:BOOK_TYPES[bt],
+      recipient:req?.subjectName ?? "", dateOfSacrament:req?.dateOfSacrament || req?.apprDate || "", officiant:"", ...B0,
+      linkedRequestId:req?.id ?? "", encodedBy:auth.name, dateEncoded:todayISO() };
+  };
+  useEffect(() => {
+    if (!prefill) return;
+    const ex = books.find(b => b.linkedRequestId === prefill);
+    if (ex) setView(ex); else setForm(blank(appts.find(a => a.id === prefill)));
+    clearFocus();
+  }, [prefill]);
+
+  const rows = books.filter(b => (typeF === "all" || b.bookType === typeF) && (statusF === "all" || b.status === statusF) &&
+    (!q || [b.id, b.recipient, b.bookNo, b.entryNo, b.linkedRequestId, b.officiant].some(v => v.toLowerCase().includes(q.toLowerCase()))));
+
+  function save() {
+    const f = form!;
+    if (!f.bookNo || !f.page || !f.entryNo || !f.recipient.trim() || !f.dateOfSacrament) { setErr("Book No., Page, Entry No., Recipient and Date of Sacrament are required."); return; }
+    if (books.some(b => b.bookType === f.bookType && b.bookNo === f.bookNo && b.page === f.page && b.entryNo === f.entryNo)) { setErr("An entry with the same Book No., Page and Entry No. already exists in this register."); return; }
+    const saved = { ...f, id:nextBkId() };
+    setBooks(l => [saved, ...l]);
+    log({ module:"Book Entity", actionType:"Encode", client:f.recipient, recordType:"Book Entity", recordId:saved.id,
+      desc:`${who(auth)} encoded the ${f.sacramentType} record of ${f.recipient} (${f.bookType} Book ${f.bookNo}, Page ${f.page}, Entry ${f.entryNo}) at ${clock()}.` });
+    push("success", `${saved.id} encoded.`); setForm(null);
+  }
+
+  const bset = (p: Partial<BookEntry>) => { setForm(f => f ? { ...f, ...p } : f); setErr(""); };
+
+  return (
+    <div>
+      <PageHead title="Book Entity" sub="Digital index of the parish registers. The physical register remains the official record."
+        right={<><SearchBox value={q} set={setQ} placeholder="Search recipient, Book/Entry No., request" width={260}/><Btn onClick={() => { setErr(""); setForm(blank()); }}>+ Encode Entry</Btn></>}/>
+      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+        <FS value={typeF} onChange={e => setTypeF(e.target.value)} style={{ width:220 }}><option value="all">All registers</option>{BOOK_TYPE_LIST.map(b => <option key={b}>{b}</option>)}</FS>
+        <FS value={statusF} onChange={e => setStatusF(e.target.value)} style={{ width:160 }}><option value="all">All statuses</option><option value="active">Active</option><option value="corrected">Corrected</option></FS>
+      </div>
+      <Card>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>{["ID","Register","Book / Page / Entry","Recipient","Date of Sacrament","Officiant","Linked Request","Status",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.length === 0 && <EmptyRow cols={9} text="No entries found."/>}
+            {rows.map(b => (
+              <tr key={b.id} style={{ borderTop:`1px solid ${T.border}` }}>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{b.id}</td>
+                <td style={{ ...TD, fontSize:15 }}>{b.bookType}</td>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{b.bookNo} / {b.page} / {b.entryNo}</td>
+                <td style={{ ...TD, fontWeight:600 }}>{b.recipient}</td>
+                <td style={{ ...TD, fontSize:15 }}>{fmtShort(b.dateOfSacrament)}</td>
+                <td style={{ ...TD, fontSize:15 }}>{b.officiant || "—"}</td>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{b.linkedRequestId || "—"}</td>
+                <td style={TD}><SPill s={b.status}/></td>
+                <td style={{ ...TD, whiteSpace:"nowrap" }}>
+                  <button style={linkBtn} onClick={() => setView(b)}>View</button>{"  ·  "}
+                  <button style={linkBtn} onClick={() => setCorrect(b)}>Correct</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      {/* Encode */}
+      <Modal open={!!form} title="Encode Book Entity" onClose={() => setForm(null)} maxW={680}
+        footer={<><Btn variant="ghost" onClick={() => setForm(null)}>Cancel</Btn><Btn onClick={save}>Save Entry</Btn></>}>
+        {form && <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div style={g2}>
+            <div><FL req>Book Type</FL><FS value={form.bookType} onChange={e => bset({ bookType:e.target.value, sacramentType:BOOK_TYPES[e.target.value] })}>{BOOK_TYPE_LIST.map(b => <option key={b}>{b}</option>)}</FS></div>
+            <div><FL>Sacrament Type</FL><FI value={form.sacramentType} readOnly style={{ background:T.bg }}/></div>
+          </div>
+          <div style={g3}>
+            <div><FL req>Book No.</FL><FI value={form.bookNo} onChange={e => bset({ bookNo:e.target.value })}/></div>
+            <div><FL req>Page</FL><FI value={form.page} onChange={e => bset({ page:e.target.value })}/></div>
+            <div><FL req>Entry No.</FL><FI value={form.entryNo} onChange={e => bset({ entryNo:e.target.value })}/></div>
+          </div>
+          <div style={g2}>
+            <div><FL req>Recipient</FL><FI value={form.recipient} onChange={e => bset({ recipient:e.target.value })}/></div>
+            <div><FL>Officiant</FL><FS value={form.officiant} onChange={e => bset({ officiant:e.target.value })}><option value="">—</option>{PRIESTS.map(p => <option key={p}>{p}</option>)}</FS></div>
+          </div>
+          <div style={g2}>
+            <div><FL req>Date of Sacrament</FL><FI type="date" value={form.dateOfSacrament} onChange={e => bset({ dateOfSacrament:e.target.value })}/></div>
+            <div><FL>Date of Arrival</FL><FI type="date" value={form.dateOfArrival} onChange={e => bset({ dateOfArrival:e.target.value })}/>
+              <p style={{ fontSize:13, color:T.muted, margin:"3px 0 0" }}>As written in the register — not the request submission date.</p></div>
+          </div>
+          <div style={g2}>
+            <div><FL>Linked Request ID</FL><FS value={form.linkedRequestId} onChange={e => bset({ linkedRequestId:e.target.value })}><option value="">None (pre-existing record)</option>
+              {appts.map(a => <option key={a.id} value={a.id}>{a.id} · {a.subjectName}</option>)}</FS></div>
+            <div><FL>Encoded By / Date</FL><FI value={`${form.encodedBy} · ${fmt(form.dateEncoded)}`} readOnly style={{ background:T.bg }}/></div>
+          </div>
+          <div><FL>Remarks</FL><FT rows={2} value={form.remarks} onChange={e => bset({ remarks:e.target.value })}/></div>
+          <Err m={err}/>
+        </div>}
       </Modal>
+
+      <Drawer open={!!view} title={view ? view.recipient : ""} sub={view ? `${view.id} · ${view.bookType}` : ""} onClose={() => setView(null)}
+        footer={view && <>
+          {view.linkedRequestId && <Btn variant="outline" size="sm" onClick={() => go("requests", { requestId:view.linkedRequestId })}>Open Request</Btn>}
+          {view.linkedRequestId && PRINTABLE.includes(view.sacramentType) && <Btn size="sm" onClick={() => go("certificates", { certRequestId:view.linkedRequestId })}>Generate Certificate</Btn>}
+          <Btn variant="outline" size="sm" onClick={() => { setCorrect(view); setView(null); }}>Correct</Btn>
+        </>}>
+        {view && <>
+          <KV k="Book Type" v={view.bookType}/><KV k="Book No." v={view.bookNo} mono/><KV k="Page" v={view.page} mono/><KV k="Entry No." v={view.entryNo} mono/>
+          <KV k="Date of Arrival" v={view.dateOfArrival ? fmt(view.dateOfArrival) : ""}/><KV k="Sacrament Type" v={view.sacramentType}/>
+          <KV k="Recipient" v={view.recipient}/><KV k="Date of Sacrament" v={fmt(view.dateOfSacrament)}/><KV k="Officiant" v={view.officiant}/>
+          <KV k="Status" v={<SPill s={view.status}/>}/><KV k="Remarks" v={view.remarks}/><KV k="Linked Request" v={view.linkedRequestId} mono/>
+          <KV k="Encoded By" v={view.encodedBy}/><KV k="Date Encoded" v={fmt(view.dateEncoded)}/>
+          <div style={{ marginTop:12 }}><Notice>Entries cannot be deleted. Use Correct to amend the index; the physical register governs.</Notice></div>
+        </>}
+      </Drawer>
+
+      <CorrectBookModal entry={correct} onClose={() => setCorrect(null)} onSave={(n, reason) => {
+        const o = correct!;
+        const prev: Record<string,string> = {}, next: Record<string,string> = {};
+        (["bookNo","page","entryNo","recipient","dateOfSacrament","dateOfArrival","officiant","remarks"] as const).forEach(k => { if (o[k] !== n[k]) { prev[k] = o[k]; next[k] = n[k]; } });
+        setBooks(l => l.map(b => b.id === o.id ? { ...n, status:"corrected" } : b));
+        log({ module:"Book Entity", actionType:"Correct", client:n.recipient, recordType:"Book Entity", recordId:o.id, reason, prev, next,
+          desc:`${who(auth)} corrected the Book Entity record ${o.id} of ${n.recipient} at ${clock()}.` });
+        push("success", `${o.id} corrected.`); setCorrect(null);
+      }}/>
     </div>
+  );
+}
+
+function CorrectBookModal({ entry, onClose, onSave }: { entry: BookEntry | null; onClose: () => void; onSave: (b: BookEntry, reason: string) => void }) {
+  const [b, setB] = useState<BookEntry | null>(entry); const [reason, setReason] = useState(""); const [err, setErr] = useState("");
+  useEffect(() => { setB(entry); setReason(""); setErr(""); }, [entry]);
+  if (!b) return null;
+  const s = (p: Partial<BookEntry>) => setB({ ...b, ...p });
+  return (
+    <Modal open title={`Correct ${b.id}`} onClose={onClose} maxW={620}
+      footer={<><Btn variant="ghost" onClick={onClose}>Cancel</Btn><Btn onClick={() => { if (!reason.trim()) { setErr("A reason for correction is required."); return; } onSave(b, reason.trim()); }}>Save Correction</Btn></>}>
+      <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+        <div style={g3}>
+          <div><FL>Book No.</FL><FI value={b.bookNo} onChange={e => s({ bookNo:e.target.value })}/></div>
+          <div><FL>Page</FL><FI value={b.page} onChange={e => s({ page:e.target.value })}/></div>
+          <div><FL>Entry No.</FL><FI value={b.entryNo} onChange={e => s({ entryNo:e.target.value })}/></div>
+        </div>
+        <div style={g2}>
+          <div><FL>Recipient</FL><FI value={b.recipient} onChange={e => s({ recipient:e.target.value })}/></div>
+          <div><FL>Officiant</FL><FI value={b.officiant} onChange={e => s({ officiant:e.target.value })}/></div>
+        </div>
+        <div style={g2}>
+          <div><FL>Date of Sacrament</FL><FI type="date" value={b.dateOfSacrament} onChange={e => s({ dateOfSacrament:e.target.value })}/></div>
+          <div><FL>Date of Arrival</FL><FI type="date" value={b.dateOfArrival} onChange={e => s({ dateOfArrival:e.target.value })}/></div>
+        </div>
+        <div><FL>Remarks</FL><FT rows={2} value={b.remarks} onChange={e => s({ remarks:e.target.value })}/></div>
+        <div><FL req>Reason for correction</FL><FT rows={2} value={reason} onChange={e => { setReason(e.target.value); setErr(""); }}/><Err m={err}/></div>
+      </div>
+    </Modal>
   );
 }
 
 /* ─── CERTIFICATES ───────────────────────────────────────── */
-function CertificatesView({ appts, certReqs, setCertReqs, push }:
-  { appts: Appointment[];
-    certReqs: CertRequest[]; setCertReqs: React.Dispatch<React.SetStateAction<CertRequest[]>>;
-    push: (t: Toast["type"], m: string) => void }) {
+const stripAutoPrint = (html: string) => html.replace(/<script>[\s\S]*?<\/script>/g, "");
 
-  const [tab, setTab] = useState<"requests"|"new"|"print">("requests");
+function CertificatesView({ appts, issuance, setIssuance, books, renderCert, focusId, clearFocus, openMarriage }:
+  { appts: Appointment[]; issuance: Issuance[]; setIssuance: SetA<Issuance[]>; books: BookEntry[];
+    renderCert: (a: Appointment) => string; focusId?: string; clearFocus: () => void; openMarriage: (id: string) => void }) {
+  const { auth, push, log, go } = useApp();
+  const [q, setQ] = useState(""); const [typeF, setTypeF] = useState("all");
+  const [prev, setPrev] = useState<Appointment | null>(null);
+  const [reprint, setReprint] = useState<{ a: Appointment; iss: Issuance } | null>(null);
+  useEffect(() => { if (focusId) { const a = appts.find(x => x.id === focusId); if (a) setPrev(a); clearFocus(); } }, [focusId]);
 
-  /* ── Print tab state ── */
-  const [selected, setSelected] = useState<Appointment|null>(null);
-  const [printSearch, setPrintSearch] = useState("");
-  const [logoB64, setLogoB64]   = useState("");
+  const eligible = appts.filter(a => PRINTABLE.includes(a.sacramentType) && ["verified","scheduled","completed"].includes(a.status) &&
+    (typeF === "all" || a.sacramentType === typeF) && (!q || [a.id, a.parishioner, a.subjectName, a.orNo].some(v => v.toLowerCase().includes(q.toLowerCase()))));
+  const issuedFor = (id: string) => issuance.find(i => i.requestId === id && i.status === "issued");
+
+  function print(a: Appointment) { return openBlobPrint(renderCert(a)); }
+  function issue(a: Appointment) {
+    if (!print(a)) { push("error", "Pop-up blocked. Allow pop-ups to print."); return; }
+    const certNo = `PdSPA-${CERT_CODE[a.sacramentType]}-2026-${String(++_certSeq).padStart(4,"0")}`;
+    const rec: Issuance = { id:`CI-${String(++_ciid).padStart(4,"0")}`, certNo, requestId:a.id, bookId:books.find(b => b.linkedRequestId === a.id)?.id ?? "",
+      client:a.parishioner, type:a.sacramentType, issuedBy:auth.name, issuedAt:nowStamp(), status:"issued", reprintCount:0,
+      lastReprintAt:"", lastReprintBy:"", lastReprintReason:"", voidReason:"" };
+    setIssuance(l => [rec, ...l]);
+    log({ module:"Certificates", actionType:"Print / Issue", client:a.parishioner, recordType:"Certificate", recordId:certNo,
+      desc:`${who(auth)} printed and issued ${a.sacramentType} certificate ${certNo} for ${a.parishioner} at ${clock()}.` });
+    push("success", `Certificate ${certNo} issued.`); setPrev(null);
+  }
+  function doReprint(reason: string) {
+    const { a, iss } = reprint!;
+    if (!print(a)) { push("error", "Pop-up blocked. Allow pop-ups to print."); return; }
+    setIssuance(l => l.map(i => i.id === iss.id ? { ...i, reprintCount:i.reprintCount + 1, lastReprintAt:nowStamp(), lastReprintBy:auth.name, lastReprintReason:reason } : i));
+    log({ module:"Certificates", actionType:"Reprint", client:a.parishioner, recordType:"Certificate", recordId:iss.certNo, reason,
+      prev:{ "Reprint Count":String(iss.reprintCount) }, next:{ "Reprint Count":String(iss.reprintCount + 1) },
+      desc:`${who(auth)} reprinted certificate ${iss.certNo} for ${a.parishioner} at ${clock()}.` });
+    push("success", `${iss.certNo} reprinted.`); setReprint(null); setPrev(null);
+  }
+
+  return (
+    <div>
+      <PageHead title="Certificates" sub="Preview, then print and issue. Every print is recorded in Certificate Issuance."
+        right={<><SearchBox value={q} set={setQ} placeholder="Search request, client or OR No." width={240}/>
+          <FS value={typeF} onChange={e => setTypeF(e.target.value)} style={{ width:180 }}><option value="all">All types</option>{PRINTABLE.map(p => <option key={p}>{p}</option>)}</FS></>}/>
+      <div style={{ marginBottom:12 }}>
+        <Notice>Printable templates: Baptism, Confirmation, Marriage and Death Certificate. First Holy Communion, No Record and Good Standing/Membership remain available as services; their templates are awaiting parish-approved layouts.</Notice>
+      </div>
+      <Card>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>{["Request","Client","Type","Subject","OR No.","Request Status","Certificate",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+          <tbody>
+            {eligible.length === 0 && <EmptyRow cols={8} text="No verified requests with a printable certificate."/>}
+            {eligible.map(a => {
+              const iss = issuedFor(a.id);
+              return (
+                <tr key={a.id} style={{ borderTop:`1px solid ${T.border}` }}>
+                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.id}</td>
+                  <td style={{ ...TD, fontWeight:600 }}>{a.parishioner}</td>
+                  <td style={TD}><TypeTag type={a.sacramentType}/></td>
+                  <td style={TD}>{a.subjectName}</td>
+                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.orNo || "—"}</td>
+                  <td style={TD}><Badge status={a.status}/></td>
+                  <td style={{ ...TD, fontSize:15 }}>{iss ? <><b>{iss.certNo}</b>{iss.reprintCount ? ` · ${iss.reprintCount} reprint(s)` : ""}</> : <span style={{ color:T.muted }}>Not issued</span>}</td>
+                  <td style={{ ...TD, whiteSpace:"nowrap" }}>
+                    <button style={linkBtn} onClick={() => setPrev(a)}>Preview</button>
+                    {a.sacramentType === "Marriage" && <>{"  ·  "}<button style={linkBtn} onClick={() => openMarriage(a.id)}>Form 97</button></>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+
+      <Modal open={!!prev} title={prev ? `Preview · ${prev.sacramentType} — ${prev.subjectName}` : ""} onClose={() => setPrev(null)} maxW={900}
+        footer={prev && (() => { const iss = issuedFor(prev.id); return <>
+          <Btn variant="ghost" onClick={() => setPrev(null)}>Cancel</Btn>
+          <Btn variant="outline" onClick={() => go("requests", { requestId:prev.id })}>Open Request</Btn>
+          {iss ? <Btn onClick={() => setReprint({ a:prev, iss })}>Reprint {iss.certNo}</Btn> : <Btn onClick={() => issue(prev)}>Print / Issue</Btn>}
+        </>; })()}>
+        {prev && <>
+          {issuedFor(prev.id) && <div style={{ marginBottom:10 }}><Notice tone="warn">Already issued as {issuedFor(prev.id)!.certNo}. Reprinting requires a reason and is logged.</Notice></div>}
+          <iframe title="Certificate preview" srcDoc={stripAutoPrint(renderCert(prev))}
+            style={{ width:"100%", height:520, border:`1px solid ${T.border}`, borderRadius:6, background:"#fff" }}/>
+        </>}
+      </Modal>
+
+      <ConfirmModal open={!!reprint} title="Reprint Certificate" confirmLabel="Reprint"
+        message={<>Reprint <b>{reprint?.iss.certNo}</b>? This uses the same certificate number and increases its reprint count.</>}
+        reasonLabel="Reason for reprint" reasonRequired onClose={() => setReprint(null)} onConfirm={doReprint}/>
+    </div>
+  );
+}
+
+/* ─── CERTIFICATE ISSUANCE ───────────────────────────────── */
+function IssuanceView({ issuance, setIssuance, appts, renderCert }:
+  { issuance: Issuance[]; setIssuance: SetA<Issuance[]>; appts: Appointment[]; renderCert: (a: Appointment) => string }) {
+  const { auth, push, log, go } = useApp();
+  const [q, setQ] = useState(""); const [st, setSt] = useState("all");
+  const [sel, setSel] = useState<Issuance | null>(null);
+  const [act, setAct] = useState<"reprint"|"void"|null>(null);
+  const rows = issuance.filter(i => (st === "all" || i.status === st) && (!q || [i.certNo, i.client, i.requestId, i.type, i.issuedBy].some(v => v.toLowerCase().includes(q.toLowerCase()))));
+  const cur = sel ? issuance.find(i => i.id === sel.id) ?? null : null;
+
+  return (
+    <div>
+      <PageHead title="Certificate Issuance" sub="Permanent record of every certificate issued. Records are never deleted."
+        right={<><SearchBox value={q} set={setQ} placeholder="Search Cert No., client, request" width={240}/>
+          <FS value={st} onChange={e => setSt(e.target.value)} style={{ width:140 }}><option value="all">All</option><option value="issued">Issued</option><option value="voided">Voided</option></FS>
+          <Btn variant="outline" size="sm" onClick={() => downloadCSV("certificate-issuance.csv", [["Cert No.","Client","Request ID","Type","Issued By","Date/Time","Status","Reprint Count"],
+            ...rows.map(i => [i.certNo, i.client, i.requestId, i.type, i.issuedBy, i.issuedAt, i.status, i.reprintCount])])}>Export CSV</Btn></>}/>
+      <Card>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>{["Cert No.","Client","Request ID","Type","Issued By","Date / Time","Status","Reprints",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.length === 0 && <EmptyRow cols={9} text="No issuance records."/>}
+            {rows.map(i => (
+              <tr key={i.id} style={{ borderTop:`1px solid ${T.border}` }}>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15, fontWeight:600 }}>{i.certNo}</td>
+                <td style={TD}>{i.client}</td>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{i.requestId}</td>
+                <td style={TD}><TypeTag type={i.type}/></td>
+                <td style={{ ...TD, fontSize:15 }}>{i.issuedBy}</td>
+                <td style={{ ...TD, fontSize:15 }}>{fmtDT(i.issuedAt)}</td>
+                <td style={TD}><SPill s={i.status}/></td>
+                <td style={{ ...TD, textAlign:"center" }}>{i.reprintCount}</td>
+                <td style={TD}><button style={linkBtn} onClick={() => setSel(i)}>Details</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <Drawer open={!!cur} title={cur?.certNo ?? ""} sub={cur ? `${cur.type} · ${cur.client}` : ""} onClose={() => setSel(null)}
+        footer={cur && <>
+          <Btn variant="outline" size="sm" onClick={() => go("requests", { requestId:cur.requestId })}>Open Request</Btn>
+          {cur.status === "issued" && <Btn size="sm" onClick={() => setAct("reprint")}>Reprint</Btn>}
+          {cur.status === "issued" && auth.role === "admin" && <Btn variant="danger" size="sm" onClick={() => setAct("void")}>Void</Btn>}
+        </>}>
+        {cur && <>
+          <KV k="Issuance ID" v={cur.id} mono/><KV k="Certificate No." v={cur.certNo} mono/><KV k="Type" v={cur.type}/><KV k="Client" v={cur.client}/>
+          <KV k="Request ID" v={cur.requestId} mono/><KV k="Book Entity" v={cur.bookId} mono/><KV k="Issued By" v={cur.issuedBy}/><KV k="Issued At" v={fmtDT(cur.issuedAt)}/>
+          <KV k="Status" v={<SPill s={cur.status}/>}/><KV k="Reprint Count" v={String(cur.reprintCount)}/>
+          <KV k="Last Reprint" v={cur.lastReprintAt ? fmtDT(cur.lastReprintAt) : ""}/><KV k="Last Reprint By" v={cur.lastReprintBy}/>
+          <KV k="Last Reprint Reason" v={cur.lastReprintReason}/>{cur.status === "voided" && <KV k="Void Reason" v={cur.voidReason}/>}
+        </>}
+      </Drawer>
+
+      <ConfirmModal open={act === "reprint"} title="Reprint Certificate" confirmLabel="Reprint" reasonLabel="Reason for reprint" reasonRequired
+        message={<>Reprint <b>{cur?.certNo}</b>? The reprint is counted and logged.</>} onClose={() => setAct(null)}
+        onConfirm={reason => {
+          const i = cur!; const a = appts.find(x => x.id === i.requestId);
+          if (!a || !openBlobPrint(renderCert(a))) { push("error", "Unable to open the print window."); return; }
+          setIssuance(l => l.map(x => x.id === i.id ? { ...x, reprintCount:x.reprintCount + 1, lastReprintAt:nowStamp(), lastReprintBy:auth.name, lastReprintReason:reason } : x));
+          log({ module:"Certificate Issuance", actionType:"Reprint", client:i.client, recordType:"Certificate", recordId:i.certNo, reason,
+            prev:{ "Reprint Count":String(i.reprintCount) }, next:{ "Reprint Count":String(i.reprintCount + 1) },
+            desc:`${who(auth)} reprinted certificate ${i.certNo} for ${i.client} at ${clock()}.` });
+          push("success", "Reprint recorded."); setAct(null);
+        }}/>
+      <ConfirmModal open={act === "void"} title="Void Certificate" danger confirmLabel="Void Certificate" reasonLabel="Reason for voiding" reasonRequired
+        message={<>Void <b>{cur?.certNo}</b>? The record stays on file with status Voided.</>} onClose={() => setAct(null)}
+        onConfirm={reason => {
+          const i = cur!;
+          setIssuance(l => l.map(x => x.id === i.id ? { ...x, status:"voided", voidReason:reason } : x));
+          log({ module:"Certificate Issuance", actionType:"Void", client:i.client, recordType:"Certificate", recordId:i.certNo, reason,
+            prev:{ Status:"Issued" }, next:{ Status:"Voided" }, desc:`${who(auth)} voided certificate ${i.certNo} at ${clock()}.` });
+          push("info", `${i.certNo} voided.`); setAct(null);
+        }}/>
+    </div>
+  );
+}
+
+/* ─── REPORTS ────────────────────────────────────────────── */
+const REPORTS = [
+  "Monthly Client Report", "Certificate Issuance Log", "Pending Requests Report", "OR Transactions Report", "Book Entity Summary",
+  "Verification Status Report", "Service Type Demand Report", "Staff Activity Report", "Annual Summary Report", "Calendar of Activities Report",
+] as const;
+type ReportName = typeof REPORTS[number];
+interface ArchiveRow { id: string; name: string; range: string; by: string; at: string; rows: number; }
+
+function ReportsView({ appts, issuance, books, activities, logs, services }:
+  { appts: Appointment[]; issuance: Issuance[]; books: BookEntry[]; activities: Activity[]; logs: AuditLog[]; services: Service[] }) {
+  const { auth, push, log } = useApp();
+  const [tab, setTab] = useState<"generate"|"archive">("generate");
+  const [rep, setRep] = useState<ReportName>("Monthly Client Report");
+  const ym = todayISO().slice(0,7);
+  const [from, setFrom] = useState(`${ym}-01`); const [to, setTo] = useState(todayISO());
+  const [svcF, setSvcF] = useState("all");
+  const [out, setOut] = useState<{ name: ReportName; head: string[]; rows: (string|number)[][]; range: string } | null>(null);
+  const [archive, setArchive] = useState<ArchiveRow[]>([
+    { id:"RPT-0012", name:"Monthly Client Report", range:"Sep 1 – Sep 30, 2026", by:"Jose Reyes", at:"2026-10-01 09:12", rows:41 },
+    { id:"RPT-0011", name:"Certificate Issuance Log", range:"Sep 1 – Sep 30, 2026", by:"Andrea Quinto", at:"2026-10-01 09:20", rows:28 },
+    { id:"RPT-0010", name:"OR Transactions Report", range:"Sep 1 – Sep 30, 2026", by:"Andrea Quinto", at:"2026-10-01 09:31", rows:37 },
+  ]);
+  const inR = (d: string) => !!d && d.slice(0,10) >= from && d.slice(0,10) <= to;
+  const svcOk = (s: string) => svcF === "all" || s === svcF;
+
+  function build(): { head: string[]; rows: (string|number)[][] } {
+    const A = appts.filter(a => inR(a.submittedAt) && svcOk(a.sacramentType));
+    const count = (list: string[]) => Object.entries(list.reduce<Record<string,number>>((m, k) => (m[k] = (m[k] ?? 0) + 1, m), {})).sort((a, b) => b[1] - a[1]);
+    switch (rep) {
+      case "Monthly Client Report": return { head:["Request","Client","Service","Submitted","Status"], rows:A.map(a => [a.id, a.parishioner, a.sacramentType, a.submittedAt, STATUS_CFG[a.status].label]) };
+      case "Certificate Issuance Log": return { head:["Cert No.","Client","Type","Issued By","Date/Time","Status","Reprints"],
+        rows:issuance.filter(i => inR(i.issuedAt) && svcOk(i.type)).map(i => [i.certNo, i.client, i.type, i.issuedBy, fmtDT(i.issuedAt), i.status === "issued" ? "Issued" : "Voided", i.reprintCount]) };
+      case "Pending Requests Report": return { head:["Request","Client","Service","Submitted","Days waiting"],
+        rows:appts.filter(a => a.status === "pending" && svcOk(a.sacramentType)).map(a => [a.id, a.parishioner, a.sacramentType, a.submittedAt, Math.max(0, Math.round((Date.now() - new Date(a.submittedAt).getTime()) / 864e5))]) };
+      case "OR Transactions Report": return { head:["OR No.","Receipt Date","Request","Client","Service","Fee"],
+        rows:appts.filter(a => a.orNo && inR(a.orDate) && svcOk(a.sacramentType)).map(a => [a.orNo, a.orDate, a.id, a.parishioner, a.sacramentType, peso(services.find(s => s.name === a.sacramentType)?.fee ?? 0)]) };
+      case "Book Entity Summary": return { head:["Register","Entries","Corrected","Linked to requests"],
+        rows:BOOK_TYPE_LIST.map(t => { const b = books.filter(x => x.bookType === t); return [t, b.length, b.filter(x => x.status === "corrected").length, b.filter(x => x.linkedRequestId).length]; }) };
+      case "Verification Status Report": return { head:["Status","Requests"], rows:REQ_STATUSES.map(s => [STATUS_CFG[s].label, A.filter(a => a.status === s).length]) };
+      case "Service Type Demand Report": return { head:["Service","Requests"], rows:count(A.map(a => a.sacramentType)) };
+      case "Staff Activity Report": return { head:["Staff/Admin","Actions logged","Last action"],
+        rows:Object.entries(logs.filter(l => inR(l.at) && l.actionType !== "Failed Login").reduce<Record<string,AuditLog[]>>((m, l) => ((m[l.actor] ??= []).push(l), m), {}))
+          .map(([n, ls]) => [n, ls.length, fmtDT(ls[0].at)]) };
+      case "Annual Summary Report": {
+        const y = from.slice(0,4);
+        return { head:["Month","Requests","Completed","Certificates issued"], rows:Array.from({ length:12 }, (_, m) => {
+          const k = `${y}-${pad(m + 1)}`;
+          return [new Date(+y, m, 1).toLocaleDateString("en-PH",{ month:"long" }), appts.filter(a => a.submittedAt.startsWith(k)).length,
+            appts.filter(a => a.submittedAt.startsWith(k) && a.status === "completed").length, issuance.filter(i => i.issuedAt.startsWith(k) && i.status === "issued").length];
+        }) };
+      }
+      case "Calendar of Activities Report": return { head:["Date","Time","Kind","Category / Service","Title","Status"],
+        rows:[...activities.filter(a => inR(a.date)).map(a => [a.date, fmtRange(a.start, a.end, a.allDay), "Activity", a.category, a.title, a.status === "active" ? "Active" : "Cancelled"]),
+          ...appts.filter(a => a.status === "scheduled" && inR(a.apprDate)).map(a => [a.apprDate, fmtRange(a.apprStart, a.apprEnd), "Appointment", a.sacramentType, a.subjectName, "Scheduled"])]
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0]))) };
+    }
+  }
+  const range = `${fmtShort(from)} – ${fmtShort(to)}`;
+  function generate() {
+    if (from > to) { push("error", "The start date must be before the end date."); return; }
+    const r = build(); setOut({ name:rep, ...r, range });
+    setArchive(l => [{ id:`RPT-${String(13 + l.length - 3).padStart(4,"0")}`, name:rep, range, by:auth.name, at:nowStamp(), rows:r.rows.length }, ...l]);
+    log({ module:"Reports", actionType:"Generate Report", recordType:"Report", recordId:rep, desc:`${who(auth)} generated the ${rep} for ${range} at ${clock()}.` });
+  }
+  function exportCSV() {
+    if (!out) return;
+    downloadCSV(`${out.name.toLowerCase().replace(/\s+/g,"-")}.csv`, [out.head, ...out.rows]);
+    log({ module:"Reports", actionType:"Export Report", recordType:"Report", recordId:out.name, desc:`${who(auth)} exported the ${out.name} (${out.range}) at ${clock()}.` });
+  }
+  function printRep() {
+    if (!out) return;
+    const html = `<!doctype html><html><head><title>${out.name}</title><style>body{font-family:Inter,Arial,sans-serif;color:#1A1400;padding:32px}h1{font-size:18px;margin:0}p{color:#5C5020;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}th{text-align:left;background:#FEF9E7;border-bottom:2px solid #C9960A;padding:6px}td{border-bottom:1px solid #EDE8D4;padding:6px}</style></head><body>
+      <h1>Parroquia de San Pedro Apostol — ${out.name}</h1><p>${out.range} · Generated by ${auth.name} · ${fmtDT(nowStamp())}</p>
+      <table><thead><tr>${out.head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${out.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>
+      <script>window.onload=()=>window.print()</script></body></html>`;
+    openBlobPrint(html);
+    log({ module:"Reports", actionType:"Print Report", recordType:"Report", recordId:out.name, desc:`${who(auth)} printed the ${out.name} (${out.range}) at ${clock()}.` });
+  }
+
+  return (
+    <div>
+      <PageHead title="Reports" sub="Choose a report, set the date range and filters, then generate."
+        right={auth.role === "admin" && <div style={{ display:"flex", gap:6 }}>
+          <button style={chipBtn(tab === "generate")} onClick={() => setTab("generate")}>Generate</button>
+          <button style={chipBtn(tab === "archive")} onClick={() => setTab("archive")}>Reports Archive / Export</button></div>}/>
+      {tab === "generate" ? (
+        <div style={{ display:"grid", gridTemplateColumns:"260px 1fr", gap:16, alignItems:"start" }}>
+          <Card>
+            <CardHead title="Report type"/>
+            {REPORTS.map(r => (
+              <button key={r} onClick={() => { setRep(r); setOut(null); }}
+                style={{ width:"100%", textAlign:"left", padding:"8px 14px", border:"none", borderBottom:`1px solid ${T.border}`, cursor:"pointer", fontSize:16,
+                  background: rep === r ? T.priLight : "#fff", color: rep === r ? T.priHov : T.text, fontWeight: rep === r ? 700 : 400,
+                  borderLeft: rep === r ? `2px solid ${T.primary}` : "2px solid transparent" }}>{r}</button>
+            ))}
+          </Card>
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <Card>
+              <div style={{ padding:14, display:"flex", gap:12, alignItems:"flex-end", flexWrap:"wrap" }}>
+                <div><FL>From</FL><FI type="date" value={from} onChange={e => setFrom(e.target.value)}/></div>
+                <div><FL>To</FL><FI type="date" value={to} onChange={e => setTo(e.target.value)}/></div>
+                <div style={{ width:220 }}><FL>Service</FL><FS value={svcF} onChange={e => setSvcF(e.target.value)}><option value="all">All services</option>{SACR_LIST.map(s => <option key={s}>{s}</option>)}</FS></div>
+                <span style={{ flex:1 }}/>
+                <Btn onClick={generate}>Generate</Btn>
+                <Btn variant="outline" disabled={!out} onClick={exportCSV}>Export CSV</Btn>
+                <Btn variant="outline" disabled={!out} onClick={printRep}>Print</Btn>
+              </div>
+            </Card>
+            <Card>
+              <CardHead title={out ? `Preview · ${out.name}` : "Preview"} sub={out ? `${out.range} · ${out.rows.length} row(s)` : "Generate a report to preview it here."}/>
+              {out && <div style={{ overflowX:"auto", maxHeight:460 }}>
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead><tr>{out.head.map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+                  <tbody>{out.rows.length === 0 ? <EmptyRow cols={out.head.length} text="No data in this range."/> :
+                    out.rows.map((r, i) => <tr key={i} style={{ borderTop:`1px solid ${T.border}` }}>{r.map((c, j) => <td key={j} style={{ ...TD, fontSize:15 }}>{c}</td>)}</tr>)}</tbody>
+                </table>
+              </div>}
+            </Card>
+          </div>
+        </div>
+      ) : (
+        <Card>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>{["ID","Report","Range","Generated By","Generated At","Rows",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+            <tbody>{archive.map(a => (
+              <tr key={a.id} style={{ borderTop:`1px solid ${T.border}` }}>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.id}</td><td style={{ ...TD, fontWeight:600 }}>{a.name}</td>
+                <td style={TD}>{a.range}</td><td style={TD}>{a.by}</td><td style={{ ...TD, fontSize:15 }}>{fmtDT(a.at)}</td><td style={TD}>{a.rows}</td>
+                <td style={TD}><button style={linkBtn} onClick={() => { setRep(a.name as ReportName); setTab("generate"); setOut(null); }}>Regenerate</button></td>
+              </tr>))}</tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─── STAFF ACCOUNTS ─────────────────────────────────────── */
+function StaffAccountsView({ accounts, setAccounts }: { accounts: StaffAccount[]; setAccounts: SetA<StaffAccount[]> }) {
+  const { auth, push, log } = useApp();
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState<StaffAccount | null>(null);
+  const [err, setErr] = useState("");
+  const [confirm, setConfirm] = useState<{ kind: "deactivate"|"activate"|"reset"|"role"; acc: StaffAccount; pending?: StaffAccount } | null>(null);
+  const rows = accounts.filter(a => !q || [a.empId, a.name, a.username, a.position].some(v => v.toLowerCase().includes(q.toLowerCase())));
+  const base = (a: StaffAccount) => ({ module:"Staff Accounts", client:a.name, recordType:"Staff Account", recordId:a.empId });
+
+  function commit(f: StaffAccount, reason = "") {
+    const isNew = !f.id;
+    const old = accounts.find(a => a.id === f.id);
+    if (isNew) {
+      const saved = { ...f, id:`U-${accounts.length + 1}`, lastLogin:"" };
+      setAccounts(l => [...l, saved]);
+      log({ ...base(saved), actionType:"Create Account", desc:`${who(auth)} created the ${saved.role === "admin" ? "Admin" : "Staff"} account of ${saved.name} (@${saved.username}) at ${clock()}.`,
+        next:{ Username:saved.username, Role:saved.role === "admin" ? "Admin" : "Staff", Position:saved.position } });
+      push("success", `Account created. A temporary password was issued to ${saved.name} privately.`);
+    } else {
+      setAccounts(l => l.map(a => a.id === f.id ? f : a));
+      const prev: Record<string,string> = {}, next: Record<string,string> = {};
+      (["name","username","position","role"] as const).forEach(k => { if (old![k] !== f[k]) { prev[k] = String(old![k]); next[k] = String(f[k]); } });
+      log({ ...base(f), actionType: old!.role !== f.role ? "Change Role" : "Edit Account", reason, prev, next,
+        desc: old!.role !== f.role ? `${who(auth)} changed the role of ${f.name} from ${old!.role === "admin" ? "Admin" : "Staff"} to ${f.role === "admin" ? "Admin" : "Staff"} at ${clock()}.`
+          : `${who(auth)} edited the account of ${f.name} at ${clock()}.` });
+      push("success", "Account updated.");
+    }
+    setForm(null); setConfirm(null);
+  }
+  function save() {
+    const f = form!;
+    if (!f.empId.trim() || !f.name.trim() || !f.username.trim() || !f.position.trim()) { setErr("All fields are required."); return; }
+    if (!/^[a-z0-9._]{3,}$/.test(f.username)) { setErr("Username: at least 3 lowercase letters, digits, dots or underscores."); return; }
+    if (accounts.some(a => a.id !== f.id && a.username === f.username)) { setErr("That username is taken."); return; }
+    if (accounts.some(a => a.id !== f.id && a.empId === f.empId)) { setErr("That Employee ID is already in use."); return; }
+    const old = accounts.find(a => a.id === f.id);
+    if (old && old.role !== f.role) { setConfirm({ kind:"role", acc:old, pending:f }); return; }
+    commit(f);
+  }
+  function onConfirm(reason: string) {
+    const c = confirm!; const a = c.acc;
+    if (c.kind === "role") return commit(c.pending!, reason);
+    if (c.kind === "reset") {
+      log({ ...base(a), actionType:"Password Reset", reason, desc:`${who(auth)} reset the password of ${a.name} at ${clock()}.` });
+      push("success", `Password reset. ${a.name} must set a new password at next sign-in.`);
+    } else {
+      const status = c.kind === "deactivate" ? "inactive" : "active";
+      setAccounts(l => l.map(x => x.id === a.id ? { ...x, status } : x));
+      log({ ...base(a), actionType: c.kind === "deactivate" ? "Deactivate Account" : "Activate Account", reason,
+        prev:{ Status: a.status === "active" ? "Active" : "Inactive" }, next:{ Status: status === "active" ? "Active" : "Inactive" },
+        desc:`${who(auth)} ${c.kind === "deactivate" ? "deactivated" : "reactivated"} the account of ${a.name} at ${clock()}.` });
+      push("info", `${a.name} is now ${status === "active" ? "Active" : "Inactive"}.`);
+    }
+    setConfirm(null);
+  }
+  const fs = (p: Partial<StaffAccount>) => { setForm(f => f ? { ...f, ...p } : f); setErr(""); };
+
+  return (
+    <div>
+      <PageHead title="Staff Accounts" sub="Accounts are never deleted. Deactivate to remove access."
+        right={<><SearchBox value={q} set={setQ} placeholder="Search name, username, Employee ID" width={240}/>
+          <Btn onClick={() => { setErr(""); setForm({ id:"", empId:`PDSPA-EMP-${pad(accounts.length + 1).padStart(3,"0")}`, name:"", username:"", position:"Parish Secretary", role:"staff", superadmin:false, status:"active", lastLogin:"" }); }}>+ Create Account</Btn></>}/>
+      <Card>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>{["Employee ID","Full Name","Username","Position","Role","Status","Last Login",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+          <tbody>{rows.map(a => {
+            const self = a.username === auth.username;
+            return (
+              <tr key={a.id} style={{ borderTop:`1px solid ${T.border}`, opacity: a.status === "inactive" ? .7 : 1 }}>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.empId}</td>
+                <td style={{ ...TD, fontWeight:600 }}>{a.name}{self && <span style={{ fontSize:14, color:T.muted, fontWeight:400 }}> (you)</span>}</td>
+                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>@{a.username}</td>
+                <td style={{ ...TD, fontSize:15 }}>{a.position}</td>
+                <td style={TD}><RoleTag a={a}/></td>
+                <td style={TD}><SPill s={a.status}/></td>
+                <td style={{ ...TD, fontSize:15 }}>{a.lastLogin ? fmtDT(a.lastLogin) : "—"}</td>
+                <td style={{ ...TD, whiteSpace:"nowrap" }}>
+                  <button style={linkBtn} disabled={a.superadmin && !auth.superadmin} onClick={() => { setErr(""); setForm(a); }}>Edit</button>{"  ·  "}
+                  <button style={linkBtn} onClick={() => setConfirm({ kind:"reset", acc:a })}>Reset Password</button>{"  ·  "}
+                  {a.status === "active"
+                    ? <button style={{ ...linkBtn, color: self || a.superadmin ? T.muted : T.red, cursor: self || a.superadmin ? "not-allowed" : "pointer" }} disabled={self || a.superadmin}
+                        title={a.superadmin ? "The designated Superadmin account cannot be deactivated here" : self ? "You cannot deactivate your own account" : ""}
+                        onClick={() => setConfirm({ kind:"deactivate", acc:a })}>Deactivate</button>
+                    : <button style={linkBtn} onClick={() => setConfirm({ kind:"activate", acc:a })}>Activate</button>}
+                </td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </Card>
+      <p style={{ fontSize:14, color:T.muted, marginTop:8 }}>The Superadmin is a designated Admin account and is not assignable from this screen.</p>
+
+      <Modal open={!!form} title={form?.id ? `Edit ${form.name}` : "Create Account"} onClose={() => setForm(null)} maxW={560}
+        footer={<><Btn variant="ghost" onClick={() => setForm(null)}>Cancel</Btn><Btn onClick={save}>{form?.id ? "Save Changes" : "Create Account"}</Btn></>}>
+        {form && <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div style={g2}>
+            <div><FL req>Employee ID</FL><FI value={form.empId} onChange={e => fs({ empId:e.target.value })}/></div>
+            <div><FL req>Full Name</FL><FI value={form.name} onChange={e => fs({ name:e.target.value })}/></div>
+          </div>
+          <div style={g2}>
+            <div><FL req>Username</FL><FI value={form.username} onChange={e => fs({ username:e.target.value.toLowerCase() })}/></div>
+            <div><FL req>Position</FL><FI value={form.position} onChange={e => fs({ position:e.target.value })}/></div>
+          </div>
+          <div style={g2}>
+            <div><FL req>Role</FL><FS value={form.role} disabled={form.superadmin || form.username === auth.username} onChange={e => fs({ role:e.target.value as UserRole })}>
+              <option value="staff">Staff</option><option value="admin">Admin</option></FS></div>
+            <div><FL>Status</FL><FI value={form.status === "active" ? "Active" : "Inactive"} readOnly style={{ background:T.bg }}/></div>
+          </div>
+          {!form.id && <Notice>A one-time temporary password is generated and handed to the user privately. It is never shown on screen or in the Activity Log.</Notice>}
+          <Err m={err}/>
+        </div>}
+      </Modal>
+
+      <ConfirmModal open={!!confirm} danger={confirm?.kind === "deactivate"}
+        title={{ deactivate:"Deactivate Account", activate:"Activate Account", reset:"Reset Password", role:"Change Role" }[confirm?.kind ?? "reset"]}
+        confirmLabel={{ deactivate:"Deactivate", activate:"Activate", reset:"Reset Password", role:"Change Role" }[confirm?.kind ?? "reset"]}
+        message={confirm && ({
+          deactivate:<>Deactivate <b>{confirm.acc.name}</b>? They can no longer sign in. The account and its history stay on file.</>,
+          activate:<>Reactivate <b>{confirm.acc.name}</b>? They will be able to sign in again.</>,
+          reset:<>Reset the password of <b>{confirm.acc.name}</b>? A temporary password is issued privately and they must change it at next sign-in.</>,
+          role:<>Change the role of <b>{confirm.acc.name}</b> to <b>{confirm.pending?.role === "admin" ? "Admin" : "Staff"}</b>? This changes what they can access.</>,
+        }[confirm.kind])}
+        reasonLabel="Reason" reasonRequired onClose={() => setConfirm(null)} onConfirm={onConfirm}/>
+    </div>
+  );
+}
+
+/* ─── SERVICE CONFIGURATION ──────────────────────────────── */
+function ServicesView({ services, setServices }: { services: Service[]; setServices: SetA<Service[]> }) {
+  const { auth, push, log } = useApp();
+  const [sel, setSel] = useState<string>(services[0]?.id ?? "");
+  const cur = services.find(s => s.id === sel)!;
+  const [d, setD] = useState<Service>(cur);
+  useEffect(() => { const s = services.find(x => x.id === sel); if (s) setD(s); }, [sel]);
+  const dirty = JSON.stringify(d) !== JSON.stringify(cur);
+  const set = (p: Partial<Service>) => setD(x => ({ ...x, ...p }));
+  function save() {
+    if (d.fee < 0 || (d.schedulable && d.duration < 15)) { push("error", "Check the fee and duration (minimum 15 minutes)."); return; }
+    const prev: Record<string,string> = {}, next: Record<string,string> = {};
+    (Object.keys(d) as (keyof Service)[]).forEach(k => { if (d[k] !== cur[k]) { prev[k] = String(cur[k]); next[k] = String(d[k]); } });
+    setServices(l => l.map(s => s.id === d.id ? d : s));
+    log({ module:"Service Configuration", actionType:"Update Service", recordType:"Service", recordId:d.name, prev, next,
+      desc:`${who(auth)} updated the ${d.name} service configuration at ${clock()}.` });
+    push("success", `${d.name} saved.`);
+  }
+  return (
+    <div>
+      <PageHead title="Service Configuration" sub="Fees, printing and scheduling rules for each parish service."/>
+      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:16, alignItems:"start" }}>
+        <Card>
+          {services.map(s => (
+            <button key={s.id} onClick={() => setSel(s.id)}
+              style={{ width:"100%", textAlign:"left", padding:"10px 14px", border:"none", borderBottom:`1px solid ${T.border}`, cursor:"pointer",
+                background: sel === s.id ? T.priLight : "#fff", borderLeft: sel === s.id ? `2px solid ${T.primary}` : "2px solid transparent" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span style={{ fontSize:16, fontWeight:600, color:T.text }}>{s.name}</span>
+                <SPill s={s.active ? "active" : "inactive"}/>
+              </div>
+              <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>{peso(s.fee)}{s.schedulable ? ` · ${s.duration} min · ${s.calCategory}` : " · document service"}</div>
+            </button>
+          ))}
+        </Card>
+        {cur && <Card>
+          <CardHead title={d.name} sub="Changes apply to new requests" right={<><Btn variant="ghost" size="sm" disabled={!dirty} onClick={() => setD(cur)}>Discard</Btn><Btn size="sm" disabled={!dirty} onClick={save}>Save</Btn></>}/>
+          <div style={{ padding:16, display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={g2}>
+              <div><FL>Service name</FL><FI value={d.name} readOnly style={{ background:T.bg }}/></div>
+              <div><FL req>Base fee (₱)</FL><FI type="number" min={0} step={50} value={d.fee} onChange={e => set({ fee:Number(e.target.value) })}/></div>
+            </div>
+            <div><FL>Description</FL><FT rows={2} value={d.description} onChange={e => set({ description:e.target.value })}/></div>
+            <Divider/>
+            <div style={g2}>
+              <Toggle on={d.requiresPrinting} set={v => set({ requiresPrinting:v })} label="Requires Printing" hint={PRINTABLE.includes(d.name) ? "Uses an approved certificate template" : "No approved template yet"}/>
+              <Toggle on={d.active} set={v => set({ active:v })} label="Active" hint="Inactive services cannot be requested"/>
+              <Toggle on={d.schedulable} set={v => set({ schedulable:v, requiresAppt: v ? d.requiresAppt : false })} label="Is Schedulable" hint="Appears on the Calendar once approved"/>
+              <Toggle on={d.requiresAppt} disabled={!d.schedulable} set={v => set({ requiresAppt:v })} label="Requires Appointment" hint="Client must request a preferred schedule"/>
+            </div>
+            <div style={g2}>
+              <div><FL>Default Duration</FL><FS value={d.duration} disabled={!d.schedulable} onChange={e => set({ duration:Number(e.target.value) })}>
+                {[15,30,45,60,90,120,180].map(m => <option key={m} value={m}>{m} minutes</option>)}</FS></div>
+              <div><FL>Calendar Category</FL><FS value={d.calCategory} disabled={!d.schedulable} onChange={e => set({ calCategory:e.target.value })}>
+                <option value="">— none —</option>{MASS_CATS.map(c => <option key={c}>{c}</option>)}</FS></div>
+            </div>
+          </div>
+        </Card>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── SYSTEM SETTINGS ────────────────────────────────────── */
+function SettingsView({ settings, setSettings, logoB64 }: { settings: ParishSettings; setSettings: SetA<ParishSettings>; logoB64: string }) {
+  const { auth, push, log } = useApp();
+  const [d, setD] = useState(settings);
+  const [restore, setRestore] = useState(false);
+  const dirty = JSON.stringify(d) !== JSON.stringify(settings);
+  const f = (k: keyof ParishSettings, label: string, area?: boolean) => (
+    <div><FL>{label}</FL>{area ? <FT rows={2} value={d[k]} onChange={e => setD({ ...d, [k]:e.target.value })}/> : <FI value={d[k]} onChange={e => setD({ ...d, [k]:e.target.value })}/>}</div>
+  );
+  function save() {
+    const prev: Record<string,string> = {}, next: Record<string,string> = {};
+    (Object.keys(d) as (keyof ParishSettings)[]).forEach(k => { if (d[k] !== settings[k]) { prev[k] = settings[k]; next[k] = d[k]; } });
+    setSettings(d);
+    log({ module:"System Settings", actionType:"Update Settings", recordType:"Settings", recordId:"Parish Profile", prev, next, desc:`${who(auth)} updated the system settings at ${clock()}.` });
+    push("success", "Settings saved.");
+  }
+  return (
+    <div>
+      <PageHead title="System Settings" sub="Parish profile, office hours, branding and data backup. Service fees and rules are in Service Configuration."
+        right={<><Btn variant="ghost" disabled={!dirty} onClick={() => setD(settings)}>Discard</Btn><Btn disabled={!dirty} onClick={save}>Save Settings</Btn></>}/>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, alignItems:"start" }}>
+        <Card><CardHead title="Parish Profile"/><div style={{ padding:16, display:"flex", flexDirection:"column", gap:12 }}>
+          {f("parishName","Parish name")}{f("diocese","Diocese")}{f("address","Address", true)}
+          <div style={g2}>{f("phone","Phone")}{f("email","Email")}</div>{f("facebook","Facebook page")}
+        </div></Card>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          <Card><CardHead title="Office Hours" sub="Use Closed Office Day on the Calendar for exceptions"/><div style={{ padding:16, display:"flex", flexDirection:"column", gap:12 }}>
+            {f("hoursWeekday","Monday – Friday")}<div style={g2}>{f("hoursSat","Saturday")}{f("hoursSun","Sunday")}</div>
+          </div></Card>
+          <Card><CardHead title="Branding & Certificate Header"/><div style={{ padding:16, display:"flex", flexDirection:"column", gap:12 }}>
+            <div style={{ display:"flex", gap:14, alignItems:"center" }}>
+              <div style={{ width:64, height:64, border:`1px solid ${T.border}`, borderRadius:8, padding:4 }}><ImageWithFallback src={logoB64 || logoSrc} alt="Parish seal" style={{ width:"100%", height:"100%", objectFit:"contain" }}/></div>
+              <div><div style={{ fontSize:16, fontWeight:600 }}>Parish seal</div><div style={{ fontSize:14, color:T.muted }}>Used on the sidebar, login and certificate header. PNG, square.</div>
+                <Btn variant="outline" size="sm" style={{ marginTop:6 }} onClick={() => push("info", "Logo upload is handled by the system administrator.")}>Replace logo</Btn></div>
+            </div>
+            <div style={g2}>{f("certSignatory","Certificate signatory")}{f("certSignatoryTitle","Signatory title")}</div>
+            {f("certFooter","Certificate footer note", true)}
+          </div></Card>
+          <Card><CardHead title="Backup & Restore"/><div style={{ padding:16, display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ fontSize:15, color:T.sub }}>Last automatic backup: <b>{fmtDT(`${todayISO()}T02:00:00`)}</b></div>
+            <div style={{ display:"flex", gap:8 }}>
+              <Btn variant="outline" size="sm" onClick={() => { log({ module:"System Settings", actionType:"Backup", recordType:"Backup", recordId:`BKP-${todayISO()}`, desc:`${who(auth)} created a manual backup at ${clock()}.` }); push("success", "Backup created."); }}>Create Backup Now</Btn>
+              <Btn variant="danger" size="sm" disabled={!auth.superadmin} onClick={() => setRestore(true)}>Restore from Backup</Btn>
+            </div>
+            {!auth.superadmin && <p style={{ fontSize:14, color:T.muted, margin:0 }}>Restore is limited to the designated Superadmin.</p>}
+          </div></Card>
+        </div>
+      </div>
+      <ConfirmModal open={restore} title="Restore from Backup" danger confirmLabel="Restore" reasonLabel="Reason for restore" reasonRequired
+        message="Restoring replaces current records with the selected backup. The Activity Log is preserved." onClose={() => setRestore(false)}
+        onConfirm={reason => { log({ module:"System Settings", actionType:"Restore", recordType:"Backup", recordId:`BKP-${todayISO()}`, reason, desc:`${who(auth)} requested a restore from backup at ${clock()}.` }); push("info", "Restore request recorded."); setRestore(false); }}/>
+    </div>
+  );
+}
+
+/* ─── ACTIVITY LOGS / AUDIT LOGS ─────────────────────────── */
+function AuditLogsView({ logs, accounts }: { logs: AuditLog[]; accounts: StaffAccount[] }) {
+  const { auth, log } = useApp();
+  const [acct, setAcct] = useState("all"); const [mod, setMod] = useState("all"); const [act, setAct] = useState("all");
+  const [from, setFrom] = useState(""); const [to, setTo] = useState(""); const [client, setClient] = useState(""); const [q, setQ] = useState("");
+  const [sel, setSel] = useState<AuditLog | null>(null);
+  const modules = [...new Set(logs.map(l => l.module))].sort();
+  const actions = [...new Set(logs.map(l => l.actionType))].sort();
+  const rows = logs.filter(l => (acct === "all" || l.username === acct) && (mod === "all" || l.module === mod) && (act === "all" || l.actionType === act) &&
+    (!from || l.at.slice(0,10) >= from) && (!to || l.at.slice(0,10) <= to) &&
+    (!client || `${l.client} ${l.recordId}`.toLowerCase().includes(client.toLowerCase())) &&
+    (!q || `${l.desc} ${l.reason} ${l.actor} ${l.username}`.toLowerCase().includes(q.toLowerCase())));
+  const reset = () => { setAcct("all"); setMod("all"); setAct("all"); setFrom(""); setTo(""); setClient(""); setQ(""); };
+  function exp() {
+    downloadCSV("activity-log.csv", [["Log ID","Date & Time","Staff/Admin","Username","Action","Module","Client/Record","Details","Reason"],
+      ...rows.map(l => [l.id, l.at.replace("T"," "), l.actor || "—", l.username, l.actionType, l.module, [l.client, l.recordId].filter(Boolean).join(" · "), l.desc, l.reason])]);
+    log({ module:"Activity Logs", actionType:"Export Logs", recordType:"Activity Log", recordId:`${rows.length} entries`, desc:`${who(auth)} exported ${rows.length} Activity Log entries at ${clock()}.` });
+  }
+  const kv = (o?: Record<string,string>) => o && Object.keys(o).length ? Object.entries(o).map(([k, v]) => `${k}: ${v}`).join("\n") : "";
+
+  return (
+    <div>
+      <PageHead title="Activity Logs / Audit Logs" sub="Every action in SARMS is recorded automatically. Historical records are read-only."
+        right={<Btn variant="outline" onClick={exp}>Export CSV</Btn>}/>
+      <Card style={{ marginBottom:12 }}>
+        <div style={{ padding:12, display:"grid", gridTemplateColumns:"1.1fr 1fr 1fr .8fr .8fr 1fr 1.3fr auto", gap:8, alignItems:"end" }}>
+          <div><FL>Account</FL><FS value={acct} onChange={e => setAcct(e.target.value)}><option value="all">All accounts</option>{accounts.map(a => <option key={a.id} value={a.username}>{a.name}</option>)}</FS></div>
+          <div><FL>Module</FL><FS value={mod} onChange={e => setMod(e.target.value)}><option value="all">All modules</option>{modules.map(m => <option key={m}>{m}</option>)}</FS></div>
+          <div><FL>Action type</FL><FS value={act} onChange={e => setAct(e.target.value)}><option value="all">All actions</option>{actions.map(m => <option key={m}>{m}</option>)}</FS></div>
+          <div><FL>From</FL><FI type="date" value={from} onChange={e => setFrom(e.target.value)}/></div>
+          <div><FL>To</FL><FI type="date" value={to} onChange={e => setTo(e.target.value)}/></div>
+          <div><FL>Client / Record</FL><FI value={client} onChange={e => setClient(e.target.value)} placeholder="Name or ID"/></div>
+          <div><FL>Search</FL><FI value={q} onChange={e => setQ(e.target.value)} placeholder="Search details"/></div>
+          <Btn variant="ghost" size="sm" onClick={reset}>Reset</Btn>
+        </div>
+      </Card>
+      <Card>
+        <CardHead title={`${rows.length} entr${rows.length === 1 ? "y" : "ies"}`} sub="Read-only · export only"/>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead><tr>{["Date & Time","Staff / Admin","Action","Module","Client / Record","Details"].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.length === 0 && <EmptyRow cols={6} text="No log entries match these filters."/>}
+            {rows.map(l => (
+              <tr key={l.id} onClick={() => setSel(l)} style={{ borderTop:`1px solid ${T.border}`, cursor:"pointer" }}
+                onMouseEnter={e => (e.currentTarget.style.background = T.bg)} onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                <td style={{ ...TD, fontSize:15, whiteSpace:"nowrap" }}>{fmtDT(l.at)}</td>
+                <td style={{ ...TD, fontSize:15 }}>{l.actor || <span style={{ color:T.muted }}>— ({l.username})</span>}</td>
+                <td style={TD}><span style={{ fontSize:14, fontWeight:600, padding:"2px 7px", borderRadius:4,
+                  background: l.actionType === "Failed Login" ? T.redL : T.priLight, color: l.actionType === "Failed Login" ? T.red : T.priHov, whiteSpace:"nowrap" }}>{l.actionType}</span></td>
+                <td style={{ ...TD, fontSize:15 }}>{l.module}</td>
+                <td style={{ ...TD, fontSize:15 }}>{l.client || "—"}{l.recordId && <div style={{ fontSize:14, color:T.muted, fontFamily:"monospace" }}>{l.recordId}</div>}</td>
+                <td style={{ ...TD, fontSize:15, color:T.sub, maxWidth:420 }}>{l.desc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <Drawer open={!!sel} title={sel?.actionType ?? ""} sub={sel ? `${sel.id} · ${fmtDT(sel.at)}` : ""} onClose={() => setSel(null)}>
+        {sel && <>
+          <p style={{ fontSize:16, color:T.text, lineHeight:1.55, marginTop:0 }}>{sel.desc}</p>
+          <KV k="Log ID" v={sel.id} mono/><KV k="Date & Time" v={fmtDT(sel.at)}/><KV k="Staff / Admin" v={sel.actor}/>
+          <KV k={sel.actionType === "Failed Login" ? "Attempted username" : "Username"} v={sel.username} mono/>
+          <KV k="Action Type" v={sel.actionType}/><KV k="Module" v={sel.module}/><KV k="Client" v={sel.client}/>
+          <KV k="Record Type" v={sel.recordType}/><KV k="Record ID" v={sel.recordId} mono/><KV k="Reason" v={sel.reason}/>
+          <KV k="Previous Value" v={kv(sel.prev) && <span style={{ whiteSpace:"pre-line" }}>{kv(sel.prev)}</span>}/>
+          <KV k="New Value" v={kv(sel.next) && <span style={{ whiteSpace:"pre-line" }}>{kv(sel.next)}</span>}/>
+          <KV k="Device" v={sel.device}/><KV k="IP Address" v={sel.ip} mono/>
+          <div style={{ marginTop:12 }}><Notice>This record is read-only and cannot be edited or deleted. Passwords are never recorded.</Notice></div>
+        </>}
+      </Drawer>
+    </div>
+  );
+}
+
+/* ─── APP ROOT ───────────────────────────────────────────── */
+export default function App() {
+  const [auth, setAuth] = useState<Auth | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [view, setView] = useState<View>("dashboard");
+  const [focus, setFocus] = useState<Focus>({});
+  const [appts, setAppts] = useState(SEED_APPTS);
+  const [activities, setActivities] = useState(SEED_ACTIVITIES);
+  const [books, setBooks] = useState(SEED_BOOKS);
+  const [issuance, setIssuance] = useState(SEED_ISSUANCE);
+  const [accounts, setAccounts] = useState(SEED_STAFF);
+  const [services, setServices] = useState(SEED_SERVICES);
+  const [logs, setLogs] = useState(SEED_LOGS);
+  const [settings, setSettings] = useState(SEED_SETTINGS);
+  const [marriageData, setMarriageData] = useState<Record<string, MarriageFormData>>({});
+  const [marriageFor, setMarriageFor] = useState<string | null>(null);
+  const [logoB64, setLogoB64] = useState("");
+  const { toasts, push, dismiss } = useToasts();
 
   useEffect(() => {
     const img = new Image();
@@ -1395,867 +3189,114 @@ function CertificatesView({ appts, certReqs, setCertReqs, push }:
     };
     img.src = logoSrc as string;
   }, []);
+  const form97Imgs = { p1: form97p1B64, p2: form97p2B64 };
+  const renderCert = (a: Appointment) => generateCertHTML(a, logoB64 || logoSrc as string, marriageData[a.id] ?? BLANK_MARRIAGE, form97Imgs);
 
-  const printable = appts.filter(a => a.status === "completed" || a.status === "scheduled" || a.status === "verified");
-  const filteredPrint = printable.filter(a =>
-    !printSearch || `${a.subjectName} ${a.parishioner} ${a.id} ${a.sacramentType}`.toLowerCase().includes(printSearch.toLowerCase()));
-
-  function doPrint(a: Appointment) {
-    const w = window.open("","_blank","width=840,height=700");
-    if (!w) { push("error","Allow pop-ups to print."); return; }
-    w.document.write(generateCertHTML(a, logoB64 || logoSrc as string));
-    w.document.close();
-    push("success",`Certificate for ${a.subjectName} sent to printer.`);
-  }
-
-  /* ── Requests tab state ── */
-  const [viewR,  setViewR]  = useState<CertRequest|null>(null);
-  const [procR,  setProcR]  = useState<CertRequest|null>(null);
-  const [procNote, setProcNote] = useState("");
-  const tb = useTable<CertRequest>(certReqs, ["id","parishioner","subjectName","sacramentType","status"] as (keyof CertRequest)[], 10);
-
-  const updateCertStatus = (id: string, status: CertReqStatus, extra?: Partial<CertRequest>) => {
-    setCertReqs(r => r.map(x => x.id === id ? { ...x, status, ...extra } : x));
-    push("success", `Certificate request ${id} updated to ${status}.`);
-  };
-
-  /* ── New request form ── */
-  const blankCR = { parishioner:"", contact:"", email:"", sacramentType:"", subjectName:"",
-    dateOfSacrament:"", purposeOf:"", referenceNo:"" };
-  const [form, setForm] = useState(blankCR);
-  const [ferr, setFerr] = useState<Record<string,string>>({});
-  const [busy, setBusy] = useState(false);
-  const sf = (k: string, v: string) => { setForm(p => ({...p,[k]:v})); setFerr(p => ({...p,[k]:""})); };
-
-  async function submitNew(e: React.FormEvent) {
-    e.preventDefault();
-    const e2: Record<string,string> = {};
-    if (!form.parishioner.trim()) e2.parishioner   = "Required";
-    if (!form.contact.trim())     e2.contact        = "Required";
-    if (!form.sacramentType)      e2.sacramentType  = "Required";
-    if (!form.subjectName.trim()) e2.subjectName    = "Required";
-    if (!form.purposeOf.trim())   e2.purposeOf      = "Required";
-    setFerr(e2); if (Object.keys(e2).length) return;
-    setBusy(true);
-    await new Promise(r => setTimeout(r, 700));
-    const newR: CertRequest = { id:ncid(), requestDate:todayISO(), status:"pending",
-      staffNotes:"", claimedDate:"", ...form };
-    setCertReqs(p => [newR, ...p]);
-    push("success", `Certificate request ${newR.id} submitted.`);
-    setForm(blankCR); setFerr({}); setBusy(false); setTab("requests");
-  }
-
-  const tabBtn = (label: string, t: typeof tab, count?: number) => (
-    <button onClick={() => setTab(t)}
-      style={{ padding:"8px 14px", fontSize:14, fontWeight:tab===t?600:400,
-        color:tab===t?T.text:T.muted, background:"none", border:"none",
-        borderBottom:`2px solid ${tab===t?T.primary:"transparent"}`, cursor:"pointer",
-        display:"flex", alignItems:"center", gap:6 }}>
-      {label}
-      {count !== undefined && count > 0 && (
-        <span style={{ background:T.primary, color:"#fff", borderRadius:99,
-          fontSize:11, fontWeight:700, padding:"1px 6px", lineHeight:1.4 }}>{count}</span>
-      )}
-    </button>
-  );
-
-  const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 };
-  const pendingCount = certReqs.filter(r => r.status === "pending").length;
-
-  return (
-    <div>
-      <div style={{ marginBottom:0 }}>
-        <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Certificates</h1>
-      </div>
-
-      <div style={{ borderBottom:`1px solid ${T.border}`, marginBottom:16, display:"flex" }}>
-        {tabBtn("Certificate Requests", "requests", pendingCount)}
-        {tabBtn("New Request",          "new")}
-        {tabBtn("Print Certificate",    "print")}
-      </div>
-
-      {/* ── REQUESTS LIST TAB ── */}
-      {tab === "requests" && (
-        <Card>
-          <div style={{ display:"flex", gap:12, padding:"12px 16px", borderBottom:`1px solid ${T.border}`, flexWrap:"wrap" }}>
-            <input type="search" placeholder="Search..." value={tb.search}
-              onChange={e => { tb.setSearch(e.target.value); tb.setPage(1); }}
-              style={{ ...inp, width:256 }}/>
-            <FS value={tb.fKey==="status"?tb.fVal:""} style={{ width:150 }}
-              onChange={e => { tb.setFKey("status"); tb.setFVal(e.target.value); tb.setPage(1); }}>
-              <option value="">All Statuses</option>
-              {(["pending","processing","ready","released"] as CertReqStatus[]).map(s =>
-                <option key={s} value={s}>{CERT_STATUS_CFG[s].label}</option>)}
-            </FS>
-            <FS value={tb.fKey==="sacramentType"?tb.fVal:""} style={{ width:180 }}
-              onChange={e => { tb.setFKey("sacramentType"); tb.setFVal(e.target.value); tb.setPage(1); }}>
-              <option value="">All Types</option>
-              {SACR_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-            </FS>
-            {(tb.search || tb.fVal) && (
-              <Btn variant="ghost" size="sm" onClick={() => { tb.setSearch(""); tb.setFVal(""); tb.setFKey(""); tb.setPage(1); }}>Clear</Btn>
-            )}
-          </div>
-
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead>
-                <tr>
-                  <th style={TH}>Ref. No.</th>
-                  <SortTh label="Parishioner" field="parishioner" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("parishioner")}/>
-                  <th style={TH}>Subject Name</th>
-                  <th style={TH}>Certificate Type</th>
-                  <SortTh label="Requested" field="requestDate" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("requestDate")}/>
-                  <SortTh label="Status" field="status" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("status")}/>
-                  <th style={{ ...TH, textAlign:"right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tb.paged.length === 0 && (
-                  <tr><td colSpan={7} style={{ ...TD, textAlign:"center", color:T.muted, padding:32 }}>No certificate requests found.</td></tr>
-                )}
-                {tb.paged.map((r, i) => (
-                  <tr key={r.id} style={{ background: i%2===1 ? T.bg : T.surface }}
-                    onMouseEnter={e => (e.currentTarget.style.background = T.priLight)}
-                    onMouseLeave={e => (e.currentTarget.style.background = i%2===1 ? T.bg : T.surface)}>
-                    <td style={{ ...TD, fontFamily:"monospace", fontSize:12, color:T.muted }}>{r.id}</td>
-                    <td style={{ ...TD, fontWeight:500 }}>{r.parishioner}</td>
-                    <td style={TD}>{r.subjectName}</td>
-                    <td style={TD}><TypeTag type={r.sacramentType}/></td>
-                    <td style={{ ...TD, fontSize:13, color:T.muted }}>{fmtShort(r.requestDate)}</td>
-                    <td style={TD}><CertBadge status={r.status}/></td>
-                    <td style={{ ...TD, textAlign:"right", whiteSpace:"nowrap" }}>
-                      <Btn variant="ghost" size="sm" style={{ marginRight:4 }} onClick={() => setViewR(r)}>View</Btn>
-                      {r.status === "pending"    && <Btn variant="outline" size="sm" onClick={() => { setProcR(r); setProcNote(""); }}>Process</Btn>}
-                      {r.status === "processing" && <Btn variant="outline" size="sm" onClick={() => updateCertStatus(r.id,"ready")}>Mark Ready</Btn>}
-                      {r.status === "ready"      && <Btn variant="primary" size="sm" onClick={() => updateCertStatus(r.id,"released",{ claimedDate:todayISO() })}>Release</Btn>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-            padding:"10px 16px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
-            <span style={{ fontSize:13, color:T.muted }}>Showing {tb.paged.length} of {tb.total}</span>
-            <Paginator page={tb.page} total={tb.totalPages} set={tb.setPage}/>
-          </div>
-        </Card>
-      )}
-
-      {/* ── NEW REQUEST TAB ── */}
-      {tab === "new" && (
-        <Card style={{ maxWidth:820 }}>
-          <CardHead title="New Certificate Request" sub="Submit a request for a sacramental certificate"/>
-          <form onSubmit={submitNew} noValidate style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-            <div style={g2}>
-              <div>
-                <FL req>Parishioner Name</FL>
-                <FI value={form.parishioner} placeholder="Full name" onChange={e => sf("parishioner",e.target.value)}/>
-                {ferr.parishioner && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.parishioner}</p>}
-              </div>
-              <div>
-                <FL req>Contact Number</FL>
-                <FI value={form.contact} placeholder="09XX-XXX-XXXX" onChange={e => sf("contact",e.target.value)}/>
-                {ferr.contact && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.contact}</p>}
-              </div>
-            </div>
-            <div>
-              <FL>Email Address</FL>
-              <FI type="email" value={form.email} placeholder="email@example.com" onChange={e => sf("email",e.target.value)}/>
-            </div>
-            <div>
-              <FL req>Certificate / Sacrament Type</FL>
-              <FS value={form.sacramentType} onChange={e => sf("sacramentType",e.target.value)}>
-                <option value="" disabled>Select type...</option>
-                {SACR_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-              </FS>
-              {ferr.sacramentType && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.sacramentType}</p>}
-            </div>
-            <div>
-              <FL req>Subject Name</FL>
-              <FI value={form.subjectName} placeholder="Name as it appears in the register" onChange={e => sf("subjectName",e.target.value)}/>
-              {ferr.subjectName && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.subjectName}</p>}
-            </div>
-            <div style={g2}>
-              <div>
-                <FL>Date of Sacrament</FL>
-                <FI type="date" value={form.dateOfSacrament} onChange={e => sf("dateOfSacrament",e.target.value)}/>
-              </div>
-              <div>
-                <FL>Reference / Payment No.</FL>
-                <FI value={form.referenceNo} placeholder="GCash or bank ref." onChange={e => sf("referenceNo",e.target.value)}/>
-              </div>
-            </div>
-            <div>
-              <FL req>Purpose of Request</FL>
-              <FI value={form.purposeOf} placeholder="e.g., School enrollment, employment, visa application..." onChange={e => sf("purposeOf",e.target.value)}/>
-              {ferr.purposeOf && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.purposeOf}</p>}
-            </div>
-            <Divider/>
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-              <Btn variant="ghost" type="button" onClick={() => { setForm(blankCR); setFerr({}); }}>Clear</Btn>
-              <Btn variant="primary" type="submit" disabled={busy}>{busy ? "Submitting..." : "Submit Request"}</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {/* ── PRINT TAB ── */}
-      {tab === "print" && (
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1.2fr", gap:20, alignItems:"start" }}>
-          <Card>
-            <div style={{ padding:"10px 16px", borderBottom:`1px solid ${T.border}` }}>
-              <input type="search" placeholder="Search records..." value={printSearch}
-                onChange={e => setPrintSearch(e.target.value)} style={{ ...inp }}/>
-            </div>
-            <div style={{ maxHeight:480, overflowY:"auto" }}>
-              {filteredPrint.length === 0 && (
-                <p style={{ padding:24, textAlign:"center", fontSize:14, color:T.muted }}>No printable records found.</p>
-              )}
-              {filteredPrint.map(a => (
-                <button key={a.id} onClick={() => setSelected(a)}
-                  style={{ width:"100%", display:"block", padding:"16px 22px", textAlign:"left",
-                    background: selected?.id === a.id ? T.priLight : "transparent",
-                    border:"none", borderBottom:`1px solid ${T.border}`, cursor:"pointer",
-                    borderLeft:`2px solid ${selected?.id===a.id?T.primary:"transparent"}` }}>
-                  <div style={{ fontSize:14, fontWeight:600, color:T.text }}>{a.subjectName}</div>
-                  <div style={{ fontSize:12, color:T.muted }}>{a.id} &bull; {a.sacramentType}</div>
-                  <div style={{ fontSize:12, color:T.muted }}>{a.parishioner} &bull; {fmtShort(a.requestDate)}</div>
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <CardHead title="Preview"
-              right={selected && <Btn variant="primary" size="sm" onClick={() => doPrint(selected)}>Print Certificate</Btn>}/>
-            {!selected ? (
-              <div style={{ padding:40, textAlign:"center", color:T.muted, fontSize:14 }}>
-                Select a record on the left to preview the certificate.
-              </div>
-            ) : (
-              <div style={{ padding:24 }}>
-                <div style={{ border:`1px solid ${T.border}`, borderRadius:8, overflow:"hidden" }}>
-                  <div style={{ background:"#1A1400", padding:"20px 24px", textAlign:"center", color:"#fff" }}>
-                    <div style={{ width:44,height:44,margin:"0 auto 10px" }}>
-                      <ImageWithFallback src={logoSrc} alt="PdSPA" style={{ width:"100%",height:"100%",objectFit:"contain" }}/>
-                    </div>
-                    <div style={{ fontSize:14, fontWeight:700 }}>Parroquia de San Pedro Apostol</div>
-                    <div style={{ fontSize:12, opacity:.7, marginTop:2 }}>Diocese of Daet &bull; Vinzons, Camarines Norte</div>
-                  </div>
-                  <div style={{ padding:"20px 24px" }}>
-                    <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase",
-                      letterSpacing:".08em", color:SACR[selected.sacramentType]?.col ?? T.primary, marginBottom:6 }}>
-                      Certificate of {selected.sacramentType === "Pamisa" ? "Mass Intention" : selected.sacramentType}
-                    </div>
-                    <p style={{ fontSize:12, color:T.muted, marginBottom:6 }}>This is to certify that</p>
-                    <div style={{ fontSize:22, fontWeight:800, color:T.text,
-                      borderBottom:`1px solid ${T.border}`, paddingBottom:8, marginBottom:12 }}>
-                      {selected.subjectName}
-                    </div>
-                    <p style={{ fontSize:13, color:T.sub, lineHeight:1.7, marginBottom:16 }}>
-                      {SACR[selected.sacramentType]?.cert}
-                      {selected.dateOfSacrament && <> on <strong>{fmt(selected.dateOfSacrament)}</strong></>}
-                      {" "}as recorded in the sacramental register of this Parish.
-                    </p>
-                    <div style={{ display:"flex", gap:20, padding:"16px 22px",
-                      background:T.bg, border:`1px solid ${T.border}`, borderRadius:6, marginBottom:16 }}>
-                      {[["Cert. No.", selected.id],["Issued", fmt(todayISO())],
-                        ...(selected.dateOfSacrament?[["Date of Sacrament",fmt(selected.dateOfSacrament)]]:[])
-                      ].map(([l,v]) => (
-                        <div key={l}>
-                          <div style={{ fontSize:11, color:T.muted, textTransform:"uppercase", letterSpacing:".06em" }}>{l}</div>
-                          <div style={{ fontSize:13, fontWeight:600, color:T.text }}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display:"flex", justifyContent:"space-around", paddingTop:16, borderTop:`1px solid ${T.border}` }}>
-                      {[["REV. FR. RENE TABIOS","Parish Priest"],["PARISH SECRETARY","Records Office"]].map(([n,r]) => (
-                        <div key={n} style={{ textAlign:"center" }}>
-                          <div style={{ height:20, borderBottom:`1px solid ${T.text}`, margin:"0 12px 6px" }}/>
-                          <div style={{ fontSize:12, fontWeight:700, color:T.text }}>{n}</div>
-                          <div style={{ fontSize:11, color:T.muted }}>{r}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-      )}
-
-      {/* ── VIEW MODAL ── */}
-      <Modal open={!!viewR} title={viewR?.id ?? ""} onClose={() => setViewR(null)}
-        footer={<><Btn variant="ghost" onClick={() => setViewR(null)}>Close</Btn>
-          {viewR?.status==="pending" && <Btn variant="primary" onClick={() => { setProcR(viewR); setProcNote(""); setViewR(null); }}>Process</Btn>}</>}>
-        {viewR && (
-          <dl style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:"8px 20px", fontSize:14 }}>
-            {([["ID",viewR.id],["Parishioner",viewR.parishioner],["Contact",viewR.contact],
-              ["Email",viewR.email||"—"],["Subject",viewR.subjectName],
-              ["Cert. Type",viewR.sacramentType],["Date of Sacrament",fmt(viewR.dateOfSacrament)],
-              ["Purpose",viewR.purposeOf],["Reference No.",viewR.referenceNo||"—"],
-              ["Staff Notes",viewR.staffNotes||"—"],
-              ["Date Claimed",viewR.claimedDate?fmt(viewR.claimedDate):"—"]] as [string,string][])
-              .map(([k,v]) => (
-                <div key={k} style={{ display:"contents" }}>
-                  <dt style={{ fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",color:T.muted,paddingTop:2 }}>{k}</dt>
-                  <dd style={{ color:T.text }}>{v}</dd>
-                </div>
-              ))}
-            <div style={{ display:"contents" }}>
-              <dt style={{ fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:".04em",color:T.muted }}>Status</dt>
-              <dd><CertBadge status={viewR.status}/></dd>
-            </div>
-          </dl>
-        )}
-      </Modal>
-
-      {/* ── PROCESS MODAL ── */}
-      <Modal open={!!procR} title="Process Certificate Request" onClose={() => setProcR(null)}
-        footer={<>
-          <Btn variant="ghost" onClick={() => setProcR(null)}>Cancel</Btn>
-          <Btn variant="primary" onClick={() => {
-            if (!procR) return;
-            updateCertStatus(procR.id, "processing", { staffNotes: procNote || procR.staffNotes });
-            setProcR(null); setProcNote("");
-          }}>Mark as Processing</Btn>
-        </>}>
-        {procR && (
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            <div style={{ padding:"10px 16px", background:T.bg, border:`1px solid ${T.border}`, borderRadius:6, fontSize:14 }}>
-              <strong>{procR.id}</strong> — {procR.subjectName} ({procR.sacramentType})
-              {procR.referenceNo && <div style={{ fontSize:12, color:T.muted, marginTop:3 }}>Ref: {procR.referenceNo}</div>}
-            </div>
-            <div>
-              <FL>Staff Notes</FL>
-              <FT rows={3} value={procNote} placeholder="Book volume, page number, verification notes..."
-                onChange={e => setProcNote(e.target.value)}/>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
-}
-
-/* ─── BOOK ENTRIES ───────────────────────────────────────── */
-function BookEntriesView({ entries, setEntries, push }:
-  { entries: BookEntry[]; setEntries: React.Dispatch<React.SetStateAction<BookEntry[]>>;
-    push: (t: Toast["type"], m: string) => void }) {
-  const [showForm, setShowForm] = useState(false);
-  const [busy, setBusy]         = useState(false);
-  const blank = { sacramentType:"", subjectName:"", dateOfSacrament:"", dateOfArrival:todayISO(), volume:"", page:"", minister:"", remarks:"" };
-  const [form, setForm]         = useState(blank);
-  const [ferr, setFerr]         = useState<Record<string,string>>({});
-  const sf = (k: string, v: string) => { setForm(p => ({...p,[k]:v})); setFerr(p => ({...p,[k]:""})); };
-  const tb = useTable<BookEntry>(entries, ["subjectName","sacramentType","minister"] as (keyof BookEntry)[], 10);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const e2: Record<string,string> = {};
-    if (!form.sacramentType)      e2.sacramentType = "Required";
-    if (!form.subjectName.trim()) e2.subjectName   = "Required";
-    if (!form.dateOfArrival)      e2.dateOfArrival  = "Required";
-    if (!form.volume.trim())      e2.volume         = "Required";
-    if (!form.page.trim())        e2.page           = "Required";
-    setFerr(e2); if (Object.keys(e2).length) return;
-    setBusy(true);
-    await new Promise(r => setTimeout(r, 600));
-    setEntries(p => [{ id:`BK-${String(p.length+1).padStart(3,"0")}`, ...form }, ...p]);
-    push("success", `Book entry for ${form.subjectName} added.`);
-    setForm(blank); setBusy(false); setShowForm(false);
-  }
-
-  const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 };
-
-  return (
-    <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-        <div>
-          <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Book Entries</h1>
-          <p style={{ fontSize:15, color:T.muted, marginTop:4 }}>Sacramental register index</p>
-        </div>
-        <Btn variant="primary" size="sm" onClick={() => setShowForm(s => !s)}>
-          {showForm ? "Cancel" : "Add Entry"}
-        </Btn>
-      </div>
-
-      {showForm && (
-        <Card style={{ marginBottom:16 }}>
-          <CardHead title="Add Book Entry" sub="Date of Arrival is required"/>
-          <form onSubmit={submit} noValidate style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-            <div style={g2}>
-              <div>
-                <FL req>Sacrament Type</FL>
-                <FS value={form.sacramentType} onChange={e => sf("sacramentType",e.target.value)}>
-                  <option value="" disabled>Select...</option>
-                  {SACR_LIST.map(s => <option key={s} value={s}>{s}</option>)}
-                </FS>
-                {ferr.sacramentType && <p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.sacramentType}</p>}
-              </div>
-              <div><FL req>Subject Name</FL><FI value={form.subjectName} placeholder="Name in register" onChange={e => sf("subjectName",e.target.value)}/>{ferr.subjectName&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.subjectName}</p>}</div>
-            </div>
-            <div style={g2}>
-              <div><FL>Date of Sacrament</FL><FI type="date" value={form.dateOfSacrament} onChange={e => sf("dateOfSacrament",e.target.value)}/></div>
-              <div><FL req>Date of Arrival</FL><FI type="date" value={form.dateOfArrival} onChange={e => sf("dateOfArrival",e.target.value)}/>{ferr.dateOfArrival&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.dateOfArrival}</p>}</div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 2fr", gap:12 }}>
-              <div><FL req>Volume</FL><FI value={form.volume} placeholder="e.g., 12" onChange={e => sf("volume",e.target.value)}/>{ferr.volume&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.volume}</p>}</div>
-              <div><FL req>Page</FL><FI value={form.page} placeholder="e.g., 34" onChange={e => sf("page",e.target.value)}/>{ferr.page&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.page}</p>}</div>
-              <div><FL>Minister</FL><FI value={form.minister} placeholder="e.g., Fr. Rene Tabios" onChange={e => sf("minister",e.target.value)}/></div>
-            </div>
-            <div><FL>Remarks</FL><FT rows={2} value={form.remarks} placeholder="Parents, sponsors, witnesses..." onChange={e => sf("remarks",e.target.value)}/></div>
-            <Divider/>
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-              <Btn variant="ghost" type="button" onClick={() => { setForm(blank); setFerr({}); }}>Clear</Btn>
-              <Btn variant="primary" type="submit" disabled={busy}>{busy?"Saving...":"Save Entry"}</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      <Card>
-        <div style={{ padding:"10px 16px", borderBottom:`1px solid ${T.border}` }}>
-          <input type="search" placeholder="Search entries..." value={tb.search}
-            onChange={e => { tb.setSearch(e.target.value); tb.setPage(1); }} style={{ ...inp, width:260 }}/>
-        </div>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead>
-              <tr>
-                <th style={TH}>ID</th>
-                <SortTh label="Subject Name" field="subjectName" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("subjectName")}/>
-                <th style={TH}>Sacrament</th>
-                <SortTh label="Date of Sacrament" field="dateOfSacrament" sf={tb.sortF} sd={tb.sortD} sort={() => tb.sort("dateOfSacrament")}/>
-                <th style={{ ...TH, color:T.primary }}>Date of Arrival</th>
-                <th style={TH}>Vol. / Page</th>
-                <th style={TH}>Minister</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tb.paged.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign:"center", color:T.muted, padding:32 }}>No entries found.</td></tr>}
-              {tb.paged.map((b, i) => (
-                <tr key={b.id} style={{ background: i%2===1 ? T.bg : T.surface }}>
-                  <td style={{ ...TD, fontFamily:"monospace", fontSize:12, color:T.muted }}>{b.id}</td>
-                  <td style={{ ...TD, fontWeight:500 }}>{b.subjectName}</td>
-                  <td style={TD}><TypeTag type={b.sacramentType}/></td>
-                  <td style={{ ...TD, fontSize:13, color:T.muted }}>{fmtShort(b.dateOfSacrament)}</td>
-                  <td style={{ ...TD, fontWeight:600, color:T.primary }}>{fmtShort(b.dateOfArrival)}</td>
-                  <td style={{ ...TD, fontFamily:"monospace", fontSize:13 }}>Vol.{b.volume} / Pg.{b.page}</td>
-                  <td style={{ ...TD, fontSize:13, color:T.muted }}>{b.minister||"—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-          padding:"10px 16px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
-          <span style={{ fontSize:13, color:T.muted }}>{tb.total} entries</span>
-          <Paginator page={tb.page} total={tb.totalPages} set={tb.setPage}/>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-/* ─── FUNERAL ────────────────────────────────────────────── */
-function FuneralView({ records, setRecords, push }:
-  { records: FuneralRecord[]; setRecords: React.Dispatch<React.SetStateAction<FuneralRecord[]>>;
-    push: (t: Toast["type"], m: string) => void }) {
-  const [search, setSearch]   = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [busy, setBusy]       = useState(false);
-  const blank = { deceasedName:"", dateOfDeath:"", dateOfBurial:"", block:"", lot:"", section:"Nicho", nextOfKin:"", contact:"", notes:"" };
-  const [form, setForm]       = useState(blank);
-  const [ferr, setFerr]       = useState<Record<string,string>>({});
-  const sf = (k: string, v: string) => { setForm(p => ({...p,[k]:v})); setFerr(p => ({...p,[k]:""})); };
-  const filtered = records.filter(r => !search || r.deceasedName.toLowerCase().includes(search.toLowerCase()) || r.nextOfKin.toLowerCase().includes(search.toLowerCase()) || `${r.block}-${r.lot}`.includes(search));
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const e2: Record<string,string> = {};
-    if (!form.deceasedName.trim()) e2.deceasedName = "Required";
-    if (!form.dateOfBurial)        e2.dateOfBurial  = "Required";
-    if (!form.block.trim())        e2.block          = "Required";
-    if (!form.lot.trim())          e2.lot            = "Required";
-    if (!form.nextOfKin.trim())    e2.nextOfKin      = "Required";
-    setFerr(e2); if (Object.keys(e2).length) return;
-    setBusy(true);
-    await new Promise(r => setTimeout(r, 600));
-    setRecords(p => [{ id:`FN-${String(p.length+1).padStart(3,"0")}`, ...form }, ...p]);
-    push("success", `Burial record for ${form.deceasedName} added.`);
-    setForm(blank); setBusy(false); setShowForm(false);
-  }
-
-  const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 };
-
-  return (
-    <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-        <div>
-          <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Funeral / Campo Santo</h1>
-          <p style={{ fontSize:15, color:T.muted, marginTop:4 }}>Cemetery records and lookup — PdSPA Campo Santo</p>
-        </div>
-        <Btn variant="primary" size="sm" onClick={() => setShowForm(s => !s)}>
-          {showForm ? "Cancel" : "Add Record"}
-        </Btn>
-      </div>
-
-      {/* Search */}
-      <Card style={{ marginBottom:16 }}>
-        <div style={{ padding:"16px 22px", display:"flex", alignItems:"center", gap:12 }}>
-          <input type="search" placeholder='Search by name or block/lot (e.g. "A-12")...'
-            value={search} onChange={e => setSearch(e.target.value)}
-            style={{ ...inp, flex:1, fontSize:15 }}/>
-          {search && <Btn variant="ghost" size="sm" onClick={() => setSearch("")}>Clear</Btn>}
-        </div>
-      </Card>
-
-      {showForm && (
-        <Card style={{ marginBottom:16 }}>
-          <CardHead title="Add Burial Record"/>
-          <form onSubmit={submit} noValidate style={{ padding:20, display:"flex", flexDirection:"column", gap:12 }}>
-            <div><FL req>Deceased Name</FL><FI value={form.deceasedName} placeholder="Full name" onChange={e => sf("deceasedName",e.target.value)}/>{ferr.deceasedName&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.deceasedName}</p>}</div>
-            <div style={g2}>
-              <div><FL>Date of Death</FL><FI type="date" value={form.dateOfDeath} onChange={e => sf("dateOfDeath",e.target.value)}/></div>
-              <div><FL req>Date of Burial</FL><FI type="date" value={form.dateOfBurial} onChange={e => sf("dateOfBurial",e.target.value)}/>{ferr.dateOfBurial&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.dateOfBurial}</p>}</div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1.5fr", gap:12 }}>
-              <div><FL req>Block</FL><FI value={form.block} placeholder="A" onChange={e => sf("block",e.target.value)}/>{ferr.block&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.block}</p>}</div>
-              <div><FL req>Lot</FL><FI value={form.lot} placeholder="12" onChange={e => sf("lot",e.target.value)}/>{ferr.lot&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.lot}</p>}</div>
-              <div><FL>Section</FL><FS value={form.section} onChange={e => sf("section",e.target.value)}>{["Nicho","Lawn","Ground","Wall Vault"].map(s=><option key={s}>{s}</option>)}</FS></div>
-            </div>
-            <div style={g2}>
-              <div><FL req>Next of Kin</FL><FI value={form.nextOfKin} placeholder="Full name" onChange={e => sf("nextOfKin",e.target.value)}/>{ferr.nextOfKin&&<p style={{ fontSize:12,color:T.red,margin:"2px 0 0" }}>{ferr.nextOfKin}</p>}</div>
-              <div><FL>Contact</FL><FI value={form.contact} placeholder="09XX-XXX-XXXX" onChange={e => sf("contact",e.target.value)}/></div>
-            </div>
-            <div><FL>Notes</FL><FT rows={2} value={form.notes} onChange={e => sf("notes",e.target.value)}/></div>
-            <Divider/>
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-              <Btn variant="ghost" type="button" onClick={() => { setForm(blank); setFerr({}); }}>Clear</Btn>
-              <Btn variant="primary" type="submit" disabled={busy}>{busy?"Saving...":"Save Record"}</Btn>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {/* Results */}
-      <Card>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead>
-              <tr>
-                <th style={TH}>Deceased Name</th>
-                <th style={TH}>Date of Death</th>
-                <th style={TH}>Date of Burial</th>
-                <th style={TH}>Location</th>
-                <th style={TH}>Next of Kin</th>
-                <th style={TH}>Contact</th>
-                <th style={TH}>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && <tr><td colSpan={7} style={{ ...TD, textAlign:"center", color:T.muted, padding:32 }}>No records found{search && ` for "${search}"`}.</td></tr>}
-              {filtered.map((r, i) => (
-                <tr key={r.id} style={{ background: i%2===1 ? T.bg : T.surface }}>
-                  <td style={{ ...TD, fontWeight:600 }}>{r.deceasedName}</td>
-                  <td style={{ ...TD, fontSize:13, color:T.muted }}>{fmtShort(r.dateOfDeath)}</td>
-                  <td style={{ ...TD, fontSize:13, color:T.muted }}>{fmtShort(r.dateOfBurial)}</td>
-                  <td style={TD}>
-                    <span style={{ fontWeight:700, color:T.primary }}>Blk {r.block}-{r.lot}</span>
-                    <span style={{ fontSize:12, color:T.muted, marginLeft:4 }}>({r.section})</span>
-                  </td>
-                  <td style={TD}>{r.nextOfKin}</td>
-                  <td style={{ ...TD, fontSize:13, color:T.muted }}>{r.contact||"—"}</td>
-                  <td style={{ ...TD, fontSize:13, color:T.muted }}>{r.notes||"—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ padding:"10px 16px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
-          <span style={{ fontSize:13, color:T.muted }}>{filtered.length} records</span>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-/* ─── CALENDAR ───────────────────────────────────────────── */
-function CalendarView({ appts }: { appts: Appointment[] }) {
-  const today = new Date();
-  const [year,  setYear]  = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-  const [detail, setDetail] = useState<{ date: string; items: Appointment[] }|null>(null);
-
-  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  const firstDay   = new Date(year, month, 1).getDay();
-  const daysInMon  = new Date(year, month+1, 0).getDate();
-  const todayKey   = todayISO();
-
-  const apptMap = useMemo(() => {
-    const m: Record<string, Appointment[]> = {};
-    appts.forEach(a => {
-      const key = a.scheduledDate || a.requestDate;
-      if (!key) return;
-      const y = parseInt(key.slice(0,4)), mo = parseInt(key.slice(5,7))-1;
-      if (y === year && mo === month) {
-        const d = key.slice(8,10);
-        m[d] = [...(m[d]||[]), a];
-      }
+  const addLog = useCallback((e: LogInput, who?: Auth) => {
+    const a = who ?? auth;
+    const entry: AuditLog = { client:"", recordType:"", recordId:"", reason:"", ...e, id:"", at:nowStamp(),
+      actor: e.actor ?? a?.name ?? "", username: e.username ?? a?.username ?? "", device:DEVICE, ip:"192.168.1.24" };
+    setLogs(l => {
+      const max = l.reduce((m, x) => Math.max(m, parseInt(x.id.replace(/\D/g, ""), 10) || 0), _logid);
+      _logid = max + 1;
+      return [{ ...entry, id:`LOG-${_logid}` }, ...l];
     });
-    return m;
-  }, [appts, year, month]);
+  }, [auth]);
 
-  function prev() { if (month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1); }
-  function next() { if (month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1); }
-
-  return (
-    <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-        <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Calendar</h1>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <Btn variant="ghost" size="sm" onClick={prev}>Prev</Btn>
-          <span style={{ fontSize:15, fontWeight:600, color:T.text, minWidth:140, textAlign:"center" }}>{MONTHS[month]} {year}</span>
-          <Btn variant="ghost" size="sm" onClick={next}>Next</Btn>
-          <Btn variant="outline" size="sm" onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}>Today</Btn>
-        </div>
-      </div>
-
-      <Card>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", borderBottom:`1px solid ${T.border}` }}>
-          {DAYS.map(d => (
-            <div key={d} style={{ padding:"8px 4px", textAlign:"center", fontSize:12,
-              fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:".05em" }}>{d}</div>
-          ))}
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)" }}>
-          {Array.from({length:firstDay}).map((_,i) => (
-            <div key={`e${i}`} style={{ minHeight:100, borderRight:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`, background:T.bg }}/>
-          ))}
-          {Array.from({length:daysInMon}).map((_,i) => {
-            const day = String(i+1).padStart(2,"0");
-            const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${day}`;
-            const items = apptMap[day] || [];
-            const isToday = dateStr === todayKey;
-            const col = (firstDay+i)%7;
-            const isWeekend = col===0||col===6;
-            return (
-              <div key={day} onClick={() => items.length && setDetail({ date:dateStr, items })}
-                style={{ minHeight:100, padding:"6px 8px", borderRight:`1px solid ${T.border}`,
-                  borderBottom:`1px solid ${T.border}`, cursor:items.length?"pointer":"default",
-                  background: isToday ? T.priLight : T.surface }}
-                onMouseEnter={e => { if(items.length) e.currentTarget.style.background = "#FEF3C7"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = isToday ? T.priLight : T.surface; }}>
-                <div style={{ fontSize:13, fontWeight:isToday?700:400,
-                  color:isToday?T.primary:isWeekend?T.sub:T.sub, marginBottom:4 }}>{i+1}</div>
-                {items.slice(0,2).map((a,j) => (
-                  <div key={j} style={{ fontSize:11, padding:"1px 4px", borderRadius:3,
-                    background:SACR[a.sacramentType]?.light??"#F3F4F6",
-                    color:SACR[a.sacramentType]?.col??T.sub,
-                    marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                    fontWeight:600 }}>
-                    {a.subjectName.split(" ")[0]}
-                  </div>
-                ))}
-                {items.length > 2 && <div style={{ fontSize:11, color:T.muted }}>+{items.length-2}</div>}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      <Modal open={!!detail} title={detail ? fmt(detail.date) : ""} onClose={() => setDetail(null)}>
-        {detail && (
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {detail.items.map(a => (
-              <div key={a.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                padding:"12px 16px", background:T.bg, border:`1px solid ${T.border}`, borderRadius:6, gap:10 }}>
-                <div>
-                  <div style={{ fontSize:14, fontWeight:600, color:T.text }}>{a.subjectName}</div>
-                  <div style={{ fontSize:12, color:T.muted }}>{a.id} &bull; {a.sacramentType}</div>
-                </div>
-                <Badge status={a.status}/>
-              </div>
-            ))}
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
-}
-
-/* ─── REPORTS ────────────────────────────────────────────── */
-function ReportsView({ appts }: { appts: Appointment[] }) {
-  const [selMonth, setSelMonth] = useState("2026-08");
-  const monthAppts = appts.filter(a => (a.scheduledDate || a.requestDate || "").startsWith(selMonth));
-
-  const byType = SACR_LIST.map(t => ({
-    name: t.split("/")[0].split(" ").slice(-1)[0],
-    full: t,
-    count: monthAppts.filter(a => a.sacramentType === t).length,
-    col: SACR[t]?.col ?? T.primary,
-  })).filter(x => x.count > 0);
-
-  const byStatus = (["pending","verified","scheduled","completed","cancelled"] as AppStatus[]).map(s => ({
-    name: STATUS_CFG[s].label,
-    count: monthAppts.filter(a => a.status === s).length,
-    col: STATUS_CFG[s].col,
-  })).filter(x => x.count > 0);
-
-  const completed = monthAppts.filter(a => a.status === "completed").length;
-  const rate = monthAppts.length ? Math.round((completed/monthAppts.length)*100) : 0;
-
-  const stat = (label: string, val: number|string) => (
-    <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:8, padding:"14px 16px" }}>
-      <div style={{ fontSize:12, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:".04em", marginBottom:4 }}>{label}</div>
-      <div style={{ fontSize:24, fontWeight:800, color:T.text }}>{val}</div>
-    </div>
-  );
-
-  return (
-    <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-        <h1 style={{ fontSize:22, fontWeight:700, color:T.text, margin:0 }}>Reports</h1>
-        <div style={{ display:"flex", gap:12, alignItems:"center" }}>
-          <FI type="month" value={selMonth} onChange={e => setSelMonth(e.target.value)} style={{ width:"auto" }}/>
-          <Btn variant="outline" size="sm" onClick={() => window.print()}>Print</Btn>
-        </div>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:20, marginBottom:16 }}>
-        {stat("Total Requests", monthAppts.length)}
-        {stat("Completed",      completed)}
-        {stat("Pending",        monthAppts.filter(a=>a.status==="pending").length)}
-        {stat("Completion Rate",`${rate}%`)}
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr", gap:20, marginBottom:16 }}>
-        <Card>
-          <CardHead title="By Sacrament Type"/>
-          <div style={{ padding:16 }}>
-            <SimpleBarChart data={byType} height={280} layout="horizontal"/>
-          </div>
-        </Card>
-        <Card>
-          <CardHead title="By Status"/>
-          <div style={{ padding:16 }}>
-            <SimpleBarChart data={byStatus} height={280}/>
-          </div>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHead title="Summary Table" sub={`Month: ${selMonth}`}/>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead>
-              <tr>
-                <th style={TH}>Sacrament / Service</th>
-                <th style={{ ...TH, textAlign:"center" }}>Total</th>
-                <th style={{ ...TH, textAlign:"center" }}>Completed</th>
-                <th style={{ ...TH, textAlign:"center" }}>Pending</th>
-                <th style={{ ...TH, textAlign:"center" }}>Cancelled</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SACR_LIST.map((t, i) => {
-                const rows = monthAppts.filter(a => a.sacramentType === t);
-                if (!rows.length) return null;
-                return (
-                  <tr key={t} style={{ background: i%2===1?T.bg:T.surface }}>
-                    <td style={TD}><TypeTag type={t}/></td>
-                    <td style={{ ...TD, textAlign:"center", fontWeight:700 }}>{rows.length}</td>
-                    <td style={{ ...TD, textAlign:"center", color:T.green }}>{rows.filter(a=>a.status==="completed").length}</td>
-                    <td style={{ ...TD, textAlign:"center", color:T.amber }}>{rows.filter(a=>a.status==="pending").length}</td>
-                    <td style={{ ...TD, textAlign:"center", color:T.red }}>{rows.filter(a=>a.status==="cancelled").length}</td>
-                  </tr>
-                );
-              })}
-              <tr style={{ borderTop:`2px solid ${T.border}`, fontWeight:700, background:T.bg }}>
-                <td style={{ ...TD, fontWeight:700 }}>Total</td>
-                <td style={{ ...TD, textAlign:"center", fontWeight:800 }}>{monthAppts.length}</td>
-                <td style={{ ...TD, textAlign:"center", color:T.green, fontWeight:700 }}>{completed}</td>
-                <td style={{ ...TD, textAlign:"center", color:T.amber, fontWeight:700 }}>{monthAppts.filter(a=>a.status==="pending").length}</td>
-                <td style={{ ...TD, textAlign:"center", color:T.red, fontWeight:700 }}>{monthAppts.filter(a=>a.status==="cancelled").length}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-/* ─── APP ROOT ───────────────────────────────────────────── */
-export default function App() {
-  const [auth,     setAuth]     = useState<{ role: UserRole; name: string }|null>(null);
-  const [view,     setView]     = useState<View>("dashboard");
-  const [appts,     setAppts]     = useState<Appointment[]>(SEED_APPTS);
-  const [certReqs,  setCertReqs]  = useState<CertRequest[]>(SEED_CERT_REQUESTS);
-  const [massInts,  setMassInts]  = useState<MassIntention[]>(SEED_MASS);
-  const [books,     setBooks]     = useState<BookEntry[]>(SEED_BOOKS);
-  const [funerals,  setFunerals]  = useState<FuneralRecord[]>(SEED_FUNERAL);
-  const { toasts, push, dismiss } = useToasts();
-
-  function login(role: UserRole, name: string) {
-    setAuth({ role, name });
-    push("success", `Signed in as ${name}.`);
+  function login(acc: StaffAccount) {
+    const a: Auth = { id:acc.id, name:acc.name, username:acc.username, role:acc.role, superadmin:acc.superadmin, since:nowStamp() };
+    setAuth(a); setView("dashboard");
+    setAccounts(l => l.map(x => x.id === acc.id ? { ...x, lastLogin:nowStamp() } : x));
+    addLog({ module:"Authentication", actionType:"Login", recordType:"Account", recordId:acc.empId, desc:`${who(a)} signed in to SARMS at ${clock()}.` }, a);
+    push("success", `Signed in as ${acc.name}.`);
   }
-  function logout() { setAuth(null); setView("dashboard"); }
+  function failed(username: string, why: string) {
+    addLog({ module:"Authentication", actionType:"Failed Login", actor:"", username, recordType:"Account",
+      desc:`Failed sign-in attempt for username "${username}" at ${clock()} (${why}).` });
+  }
+  function logout() {
+    if (auth) addLog({ module:"Authentication", actionType:"Logout", recordType:"Account", desc:`${who(auth)} signed out of SARMS at ${clock()}.` });
+    setAuth(null); setFocus({});
+  }
+
+  const style = <style>{`
+    *:focus-visible { outline: 3px solid ${T.primary}; outline-offset: 2px; border-radius: 6px; }
+    .sarms-btn-primary:hover:not(:disabled) { background: ${T.text} !important; border-color: ${T.text} !important; }
+    .sarms-btn-outline:hover:not(:disabled), .sarms-btn-ghost:hover:not(:disabled) { background: ${T.priLight} !important; }
+    .sarms-btn-danger:hover:not(:disabled) { filter: brightness(.9); }
+    .sarms-nav:not([aria-current]):hover { background: ${T.priLight} !important; }
+    .sarms-close { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; min-height:38px; border-radius:8px; border:1px solid ${T.borderMd}; background:#fff; color:${T.text}; font:600 15px Inter, sans-serif; cursor:pointer; flex-shrink:0; }
+    .sarms-close:hover { background:${T.priLight}; }
+    tbody tr { transition: background .1s; } tbody tr:nth-child(even) { background: #FFFDF7; } tbody tr:hover { background: ${T.priLight}; }
+    input::placeholder, textarea::placeholder { color: #8A7D4C; }
+    input[type=checkbox], input[type=radio] { width: 18px; height: 18px; accent-color: ${T.priHov}; }
+    body { font-family: 'Inter', system-ui, sans-serif; font-size: 16px; line-height: 1.5; background: ${T.bg}; color: ${T.text}; }
+    ::-webkit-scrollbar { width: 12px; height: 12px; } ::-webkit-scrollbar-thumb { background: ${T.borderMd}; border-radius: 99px; }
+    @media print { aside { display: none !important; } }
+  `}</style>;
+
+  if (!auth) return <>{style}<LoginView accounts={accounts} onLogin={login} onFail={failed}/><Toasts toasts={toasts} dismiss={dismiss}/></>;
+
+  const go = (v: View, f?: Focus) => { if (!canSee(v, auth)) return; setView(v); setFocus(f ?? {}); };
+  const safeView: View = canSee(view, auth) ? view : "dashboard";
+  const clearFocus = () => setFocus({});
+  const marrAppt = appts.find(a => a.id === marriageFor);
+  const ctx: Ctx = { auth, push, log: e => addLog(e), go };
 
   return (
-    <>
-      <style>{`
-        *, *::before, *::after { box-sizing: border-box; }
-        html, body { height: 100%; margin: 0; padding: 0;
-          font-family: 'Inter', system-ui, sans-serif;
-          font-size: 15px; background: ${T.bg}; color: ${T.text}; }
-        button, input, select, textarea { font-family: inherit; }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 2px; }
-        @media print { aside { display: none !important; } }
-      `}</style>
-
-      {!auth ? (
-        <LoginView onLogin={login}/>
-      ) : (
-        <div style={{ display:"flex", minHeight:"100vh" }}>
-          <Sidebar view={view} setView={setView} name={auth.name} role={auth.role} onLogout={logout}/>
-          <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0 }}>
-            {/* Top bar */}
-            <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`,
-              padding:"10px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-              <span style={{ fontSize:14, fontWeight:600, color:T.text }}>
-                {{ dashboard:"Dashboard", appointments:"Appointments", certificates:"Certificates",
-                   "book-entries":"Book Entries", funeral:"Funeral / Campo Santo",
-                   calendar:"Calendar", reports:"Reports" }[view]}
-              </span>
-              <span style={{ fontSize:13, color:T.muted }}>
-                {auth.name} &bull; <span style={{ textTransform:"capitalize" }}>{auth.role}</span>
-              </span>
+    <AppCtx.Provider value={ctx}>
+      {style}
+      <div style={{ display:"flex", minHeight:"100vh", background:T.bg }}>
+        <Sidebar view={safeView} setView={v => go(v)} auth={auth} pending={appts.filter(a => a.status === "pending").length} onLogout={logout}/>
+        <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column" }}>
+          <header style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"12px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:20, gap:16 }}>
+            <span style={{ display:"flex", alignItems:"center", gap:10, fontSize:15, color:T.sub }}>
+              SARMS <ChevronRight size={16}/> <b style={{ fontSize:17, color:T.text }}>{VIEW_LABEL[safeView]}</b>
+            </span>
+            <span style={{ display:"flex", alignItems:"center", gap:14, fontSize:15, color:T.sub }}>
+              <span>{new Date().toLocaleDateString("en-PH", { weekday:"long", month:"long", day:"numeric", year:"numeric" })}</span>
+              <Btn variant={helpOpen ? "primary" : "outline"} size="sm" onClick={() => setHelpOpen(h => !h)} aria-expanded={helpOpen}><HelpCircle size={18}/> How to use this page</Btn>
+            </span>
+          </header>
+          {helpOpen && (
+            <div style={{ background:T.priLight, borderBottom:`1px solid ${T.borderMd}`, padding:"14px 32px", display:"flex", gap:28, alignItems:"flex-start", flexWrap:"wrap" }}>
+              {VIEW_HELP[safeView].map((step, i) => (
+                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", maxWidth:420, fontSize:16, color:T.text, lineHeight:1.45 }}>
+                  <span style={{ width:28, height:28, borderRadius:99, background:T.priHov, color:"#fff", fontWeight:700, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{i + 1}</span>
+                  {step}
+                </div>
+              ))}
+              <button onClick={() => setHelpOpen(false)} className="sarms-close" style={{ marginLeft:"auto" }}><X size={18}/> Hide</button>
             </div>
-            {/* Content */}
-            <main style={{ flex:1, padding:36, overflowY:"auto" }}>
-              {view==="dashboard"    && <DashboardView   appts={appts} setView={setView} massInts={massInts} setMassInts={setMassInts}/>}
-              {view==="appointments" && <AppointmentsView appts={appts} setAppts={setAppts} push={push}/>}
-              {view==="certificates" && <CertificatesView appts={appts} certReqs={certReqs} setCertReqs={setCertReqs} push={push}/>}
-              {view==="book-entries" && <BookEntriesView  entries={books} setEntries={setBooks} push={push}/>}
-              {view==="funeral"      && <FuneralView      records={funerals} setRecords={setFunerals} push={push}/>}
-              {view==="calendar"     && <CalendarView     appts={appts}/>}
-              {view==="reports"      && <ReportsView      appts={appts}/>}
-            </main>
-          </div>
+          )}
+          <main style={{ flex:1, padding:"28px 32px 56px", maxWidth:1600, width:"100%" }}>
+            {safeView === "dashboard"    && <DashboardView appts={appts} activities={activities} issuance={issuance} logs={logs} accounts={accounts}/>}
+            {safeView === "requests"     && <RequestsView appts={appts} setAppts={setAppts} activities={activities} services={services} books={books} issuance={issuance}
+                                              focusId={focus.requestId} clearFocus={clearFocus} openMarriage={setMarriageFor}/>}
+            {safeView === "calendar"     && <CalendarView activities={activities} setActivities={setActivities} appts={appts}/>}
+            {safeView === "book"         && <BookEntityView books={books} setBooks={setBooks} appts={appts} prefill={focus.bookPrefill} clearFocus={clearFocus}/>}
+            {safeView === "certificates" && <CertificatesView appts={appts} issuance={issuance} setIssuance={setIssuance} books={books} renderCert={renderCert}
+                                              focusId={focus.certRequestId} clearFocus={clearFocus} openMarriage={setMarriageFor}/>}
+            {safeView === "issuance"     && <IssuanceView issuance={issuance} setIssuance={setIssuance} appts={appts} renderCert={renderCert}/>}
+            {safeView === "reports"      && <ReportsView appts={appts} issuance={issuance} books={books} activities={activities} logs={logs} services={services}/>}
+            {safeView === "staff"        && <StaffAccountsView accounts={accounts} setAccounts={setAccounts}/>}
+            {safeView === "services"     && <ServicesView services={services} setServices={setServices}/>}
+            {safeView === "settings"     && <SettingsView settings={settings} setSettings={setSettings} logoB64={logoB64}/>}
+            {safeView === "audit"        && <AuditLogsView logs={logs} accounts={accounts}/>}
+          </main>
         </div>
+      </div>
+      {marrAppt && (
+        <MarriageDetailsModal open onClose={() => setMarriageFor(null)} subjectName={marrAppt.subjectName}
+          initialData={marriageData[marrAppt.id] ?? BLANK_MARRIAGE}
+          onSave={d => {
+            setMarriageData(m => ({ ...m, [marrAppt.id]: d }));
+            addLog({ module:"Requests", actionType:"Form 97 Saved", client:marrAppt.parishioner, recordType:"Request", recordId:marrAppt.id,
+              desc:`${who(auth)} saved the Form 97 marriage data for ${marrAppt.subjectName} at ${clock()}.` });
+            push("success", "Form 97 data saved."); setMarriageFor(null);
+          }}/>
       )}
-
       <Toasts toasts={toasts} dismiss={dismiss}/>
-    </>
+    </AppCtx.Provider>
   );
 }

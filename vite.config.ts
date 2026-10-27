@@ -33,4 +33,6 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  // Inline assets as base64 data URIs up to 400 KB — covers the form97 PNG backgrounds
+  build: { assetsInlineLimit: 400000 },
 })
