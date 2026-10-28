@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Info } from "lucide-react";
 import { T, F } from "../tokens";
-import { Card, Eyebrow, Field, Notice, PBtn, Title, inputStyle } from "./ui";
+import { Card, Eyebrow, Field, Notice, PBtn, ServiceIcon, Title, inputStyle } from "./ui";
 import {
   COMMON_PURPOSES, MAX_AHEAD_DAYS, MIN_LEAD_DAYS, addDaysISO, dayInfo, fmtLong, fmtRange, fmtTime, fromMin, isoOf,
   normPhone, peso, specFor, todayISO, toMin, validEmail, validPhone, visitDateProblem,
@@ -284,7 +284,10 @@ export default function RequestWizard({ services, requests, activities, settings
   return (
     <div ref={headRef} className="mx-auto max-w-3xl">
       <Eyebrow>Request a service</Eyebrow>
-      <div className="mt-2 mb-6"><Title as="h1" size={34}>{svc && step !== "service" ? svc.name : "Choose a service"}</Title></div>
+      <div className="mt-2 mb-6 flex items-center gap-4">
+        {svc && step !== "service" && <ServiceIcon name={svc.name} size={52} />}
+        <Title as="h1" size={34}>{svc && step !== "service" ? svc.name : "Choose a service"}</Title>
+      </div>
       {progress}
 
       {step === "service" && (
@@ -293,10 +296,13 @@ export default function RequestWizard({ services, requests, activities, settings
           <div className="grid gap-3 sm:grid-cols-2">
             {services.filter(s => s.active).map(s => (
               <button key={s.id} type="button" onClick={() => pickService(s.id)} aria-pressed={serviceId === s.id}
-                className="rounded-2xl p-5 text-left" style={{ background: "#fff", border: `2px solid ${serviceId === s.id ? T.primary : T.border}`, cursor: "pointer" }}>
-                <span style={{ fontFamily: F.head, fontSize: 18, fontWeight: 800, color: T.text, display: "block" }}>{s.name}</span>
-                <span style={{ fontSize: 15, color: T.sub, lineHeight: 1.5, display: "block", margin: "6px 0 10px" }}>{s.description}</span>
-                <span style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, color: T.priHov }}>{peso(s.fee)} · {s.schedulable ? "Scheduled" : "No appointment needed"}</span>
+                className="flex items-start gap-4 rounded-2xl p-5 text-left" style={{ background: "#fff", border: `2px solid ${serviceId === s.id ? T.primary : T.border}`, cursor: "pointer" }}>
+                <ServiceIcon name={s.name} size={48} />
+                <span className="min-w-0 flex-1">
+                  <span style={{ fontFamily: F.head, fontSize: 18, fontWeight: 800, color: T.text, display: "block" }}>{s.name}</span>
+                  <span style={{ fontSize: 15, color: T.sub, lineHeight: 1.5, display: "block", margin: "6px 0 10px" }}>{s.description}</span>
+                  <span style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, color: T.priHov }}>{peso(s.fee)} · {s.schedulable ? "Scheduled" : "No appointment needed"}</span>
+                </span>
               </button>
             ))}
           </div>

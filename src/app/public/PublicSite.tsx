@@ -6,12 +6,12 @@
  *  - submitted requests        -> staff Requests queue (status Pending)
  *  - request tracking          -> the same Request records staff update */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, CheckCircle2, Clock, ExternalLink, FileText, Mail, MapPin, Menu, Phone, Search, X, AlertTriangle } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, ExternalLink, FileText, Mail, MapPin, Menu, Phone, Search, X, AlertTriangle } from "lucide-react";
 import { T, F, STATUS_CFG, ACTIVITY_CATS } from "../tokens";
-import { Card, Eyebrow, Field, Notice, PBtn, Title, Wrap, inputStyle } from "./ui";
+import { Card, Eyebrow, Field, Notice, PBtn, ServiceIcon, Title, Wrap, inputStyle } from "./ui";
 import RequestWizard from "./RequestWizard";
 import {
-  PUBLIC_CATEGORIES, addDaysISO, findRequest, fmtLong, fmtRange, fmtShort, fmtTime, isPublicActivity, officeWindows, peso, statusMessage, todayISO,
+  PUBLIC_CATEGORIES, addDaysISO, findRequest, isoOf, fmtLong, fmtRange, fmtShort, fmtTime, isPublicActivity, officeWindows, peso, statusMessage, todayISO,
   type ConflictsFor, type OnlineSubmission, type PubActivity, type PubRequest, type PubService, type PubSettings,
 } from "./publicLogic";
 
@@ -291,7 +291,8 @@ function Home({ services, activities, settings, bannerSrc, go, startRequest }:
             {services.slice(0, 8).map(s => (
               <button key={s.id} type="button" onClick={() => startRequest(s.id)} className="pub-card-hover rounded-2xl p-5 text-left"
                 style={{ background: T.bg, border: `1px solid ${T.border}`, cursor: "pointer" }}>
-                <span style={{ fontFamily: F.head, fontSize: 17, fontWeight: 800, display: "block", color: T.text }}>{s.name}</span>
+                <ServiceIcon name={s.name} size={44} />
+                <span style={{ fontFamily: F.head, fontSize: 17, fontWeight: 800, display: "block", color: T.text, marginTop: 14 }}>{s.name}</span>
                 <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 700, color: T.priHov, display: "block", marginTop: 6 }}>{peso(s.fee)}</span>
                 <span style={{ fontSize: 14, color: T.muted, display: "block", marginTop: 4 }}>{serviceMeta(s)}</span>
               </button>
@@ -338,9 +339,12 @@ function Services({ services, startRequest }: { services: PubService[]; startReq
       <div className="mt-10 grid gap-5 md:grid-cols-2">
         {services.map(s => (
           <Card key={s.id} className="flex flex-col p-6">
-            <div className="flex items-start justify-between gap-4">
-              <h2 style={{ fontFamily: F.head, fontSize: 21, fontWeight: 800, margin: 0 }}>{s.name}</h2>
-              <span style={{ fontFamily: F.head, fontSize: 18, fontWeight: 800, color: T.priHov, whiteSpace: "nowrap" }}>{peso(s.fee)}</span>
+            <div className="flex items-start gap-4">
+              <ServiceIcon name={s.name} size={56} />
+              <div className="flex min-w-0 flex-1 items-start justify-between gap-4">
+                <h2 style={{ fontFamily: F.head, fontSize: 21, fontWeight: 800, margin: "2px 0 0" }}>{s.name}</h2>
+                <span style={{ fontFamily: F.head, fontSize: 18, fontWeight: 800, color: T.priHov, whiteSpace: "nowrap", marginTop: 2 }}>{peso(s.fee)}</span>
+              </div>
             </div>
             <p style={{ fontSize: 16, lineHeight: 1.6, color: T.sub, margin: "10px 0 14px" }}>{s.description}</p>
             <ul className="m-0 mb-5 list-none space-y-1.5 p-0" style={{ fontSize: 14, color: T.muted }}>
@@ -355,37 +359,144 @@ function Services({ services, startRequest }: { services: PubService[]; startReq
   );
 }
 
-/* ─── Parish schedule ─── */
+/* ─── Parish schedule (month calendar) ─── */
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function Schedule({ activities, settings }: { activities: PubActivity[]; settings: PubSettings }) {
+  const today = todayISO();
   const [cat, setCat] = useState("All");
-  const rows = useMemo(() => upcoming(activities, 120).filter(a => cat === "All" || a.category === cat), [activities, cat]);
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); d.setHours(12); return d; });
+  const [sel, setSel] = useState(today);
+  const year = cursor.getFullYear(), month = cursor.getMonth();
+  const firstDow = new Date(year, month, 1, 12).getDay();
+  const dim = new Date(year, month + 1, 0).getDate();
+  const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+
+  const publicList = useMemo(() => activities.filter(isPublicActivity), [activities]);
+  const closedDays = useMemo(() => new Set(publicList.filter(a => a.category === "Closed Office Day").map(a => a.date)), [publicList]);
+  const byDay = useMemo(() => {
+    const m: Record<string, PubActivity[]> = {};
+    publicList.filter(a => cat === "All" || a.category === cat).forEach(a => { (m[a.date] ||= []).push(a); });
+    Object.values(m).forEach(l => l.sort((x, y) => (x.allDay ? "" : x.start).localeCompare(y.allDay ? "" : y.start)));
+    return m;
+  }, [publicList, cat]);
+  const monthCount = Object.keys(byDay).filter(d => d.startsWith(prefix)).reduce((n, d) => n + byDay[d].length, 0);
+
+  const move = (delta: number) => {
+    const d = new Date(year, month + delta, 1, 12);
+    setCursor(d);
+    setSel(d.getFullYear() === new Date().getFullYear() && d.getMonth() === new Date().getMonth() ? today : isoOf(d));
+  };
+  const goToday = () => { const d = new Date(); d.setDate(1); d.setHours(12); setCursor(d); setSel(today); };
+
+  const selList = byDay[sel] ?? [];
+  const selWindows = officeWindows(sel, settings);
+  const selHours = selWindows.map(([st, en]) => {
+    const f = (v: number) => fmtTime(`${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`);
+    return `${f(st)} – ${f(en)}`;
+  }).join(", ");
+  const selClosed = closedDays.has(sel);
+
   return (
     <Wrap className="py-12 sm:py-16">
       <Eyebrow>Calendar of activities</Eyebrow>
       <div className="mt-2"><Title as="h1" size={40}>Parish schedule</Title></div>
       <p style={{ fontSize: 18, lineHeight: 1.6, color: T.sub, maxWidth: 700, margin: "14px 0 0" }}>
-        Masses, holidays, parish activities and office closures for the next four months. Private family celebrations are not listed.
+        Masses, holidays, parish activities and office closures. Select a day to see its details. Private family celebrations are not listed.
       </p>
+
       <div className="mt-8 flex flex-wrap gap-2" role="group" aria-label="Filter by category">
-        {["All", ...PUBLIC_CATEGORIES].map(c => (
-          <button key={c} type="button" onClick={() => setCat(c)} aria-pressed={cat === c} className="rounded-full px-4 py-2"
-            style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, minHeight: 44, cursor: "pointer", background: cat === c ? T.primary : "#fff", color: cat === c ? "#fff" : T.text, border: `1.5px solid ${cat === c ? T.primary : T.borderMd}` }}>
-            {c}
-          </button>
-        ))}
+        {["All", ...PUBLIC_CATEGORIES].map(c => {
+          const col = ACTIVITY_CATS[c]?.col ?? T.primary;
+          return (
+            <button key={c} type="button" onClick={() => setCat(c)} aria-pressed={cat === c} className="inline-flex items-center gap-2 rounded-full px-4 py-2"
+              style={{ fontFamily: F.head, fontSize: 14, fontWeight: 700, minHeight: 44, cursor: "pointer", background: cat === c ? T.text : "#fff", color: cat === c ? "#fff" : T.text, border: `1.5px solid ${cat === c ? T.text : T.borderMd}` }}>
+              <span aria-hidden style={{ width: 10, height: 10, borderRadius: 99, background: col }} /> {c}
+            </button>
+          );
+        })}
       </div>
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1.6fr_1fr]">
-        <Card className="px-5">
-          {rows.length === 0 ? <p style={{ padding: "24px 0", margin: 0, color: T.muted }}>No matching activities are posted.</p>
-            : <ul className="m-0 list-none p-0">{rows.map(a => <ActivityRow key={a.id} a={a} />)}</ul>}
+
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5" style={{ background: T.priLight, borderBottom: `1px solid ${T.border}` }}>
+            <div className="flex items-center gap-2">
+              <button type="button" aria-label="Previous month" onClick={() => move(-1)} className="inline-flex h-11 w-11 items-center justify-center rounded-lg" style={{ border: `1.5px solid ${T.borderMd}`, background: "#fff", cursor: "pointer" }}><ChevronLeft size={20} /></button>
+              <button type="button" aria-label="Next month" onClick={() => move(1)} className="inline-flex h-11 w-11 items-center justify-center rounded-lg" style={{ border: `1.5px solid ${T.borderMd}`, background: "#fff", cursor: "pointer" }}><ChevronRight size={20} /></button>
+              <button type="button" onClick={goToday} className="rounded-lg px-4" style={{ minHeight: 44, border: `1.5px solid ${T.borderMd}`, background: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Today</button>
+            </div>
+            <div className="text-right">
+              <h2 aria-live="polite" style={{ fontFamily: F.display, fontSize: 24, fontWeight: 800, margin: 0, color: T.text, letterSpacing: "-.02em" }}>{cursor.toLocaleDateString("en-PH", { month: "long", year: "numeric" })}</h2>
+              <p style={{ fontSize: 13, color: T.muted, margin: 0 }}>{monthCount} {monthCount === 1 ? "activity" : "activities"} this month</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-7" style={{ borderBottom: `1px solid ${T.border}`, background: "#fff" }}>
+            {WEEKDAYS.map(d => <div key={d} className="py-2 text-center" style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: d === "Sun" ? "#B91C1C" : T.muted }}>{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-px" style={{ background: T.border }}>
+            {Array.from({ length: firstDow }, (_, i) => <div key={`b${i}`} style={{ background: "#FBF8EC" }} />)}
+            {Array.from({ length: dim }, (_, i) => {
+              const n = i + 1, iso = `${prefix}-${String(n).padStart(2, "0")}`;
+              const list = byDay[iso] ?? [], closed = closedDays.has(iso), isSel = sel === iso, isToday = iso === today;
+              return (
+                <button key={iso} type="button" onClick={() => setSel(iso)} aria-pressed={isSel}
+                  aria-label={`${fmtLong(iso)}${list.length ? `, ${list.length} ${list.length === 1 ? "activity" : "activities"}` : ", no activities"}${closed ? ", office closed" : ""}`}
+                  className="flex min-h-[62px] flex-col items-stretch gap-1 p-1.5 text-left sm:min-h-[116px] sm:p-2"
+                  style={{ background: isSel ? "#FFF3C4" : closed ? T.redL : "#fff", border: "none", cursor: "pointer", boxShadow: isSel ? `inset 0 0 0 2.5px ${T.primary}` : "none" }}>
+                  <span className="inline-flex h-7 w-7 items-center justify-center self-start rounded-full" style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, background: isToday ? T.primary : "transparent", color: isToday ? "#fff" : closed ? "#B91C1C" : T.text }}>{n}</span>
+                  <span className="hidden flex-col gap-1 sm:flex">
+                    {list.slice(0, 2).map(a => {
+                      const c = ACTIVITY_CATS[a.category] ?? { col: T.sub, light: "#F3F4F6" };
+                      return (
+                        <span key={a.id} className="block truncate rounded px-1.5 py-0.5" style={{ background: c.light, color: c.col, borderLeft: `3px solid ${c.col}`, fontFamily: F.head, fontSize: 11, fontWeight: 700 }}>
+                          {a.allDay ? "" : `${fmtTime(a.start)} `}{a.title}
+                        </span>
+                      );
+                    })}
+                    {list.length > 2 && <span style={{ fontFamily: F.head, fontSize: 11, fontWeight: 700, color: T.muted }}>+{list.length - 2} more</span>}
+                  </span>
+                  <span className="flex flex-wrap gap-1 sm:hidden" aria-hidden>
+                    {list.slice(0, 4).map(a => <span key={a.id} style={{ width: 8, height: 8, borderRadius: 99, background: (ACTIVITY_CATS[a.category] ?? { col: T.sub }).col }} />)}
+                  </span>
+                </button>
+              );
+            })}
+            {Array.from({ length: (7 - ((firstDow + dim) % 7)) % 7 }, (_, i) => <div key={`a${i}`} style={{ background: "#FBF8EC" }} />)}
+          </div>
         </Card>
-        <Card className="h-fit p-6">
-          <h2 style={{ fontFamily: F.head, fontSize: 18, fontWeight: 800, margin: "0 0 10px" }}>Parish office hours</h2>
-          <p style={{ fontSize: 16, lineHeight: 1.7, color: T.sub, margin: 0 }}>
-            <b>Mon–Fri</b> · {settings.hoursWeekday}<br /><b>Saturday</b> · {settings.hoursSat}<br /><b>Sunday</b> · {settings.hoursSun}
-          </p>
-          <p style={{ fontSize: 14, color: T.muted, margin: "12px 0 0" }}>The office is closed on days marked Closed Office Day.</p>
-        </Card>
+
+        <div className="space-y-5 lg:sticky lg:top-28">
+          <Card className="p-5">
+            <p style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: T.muted, margin: 0 }}>{sel === today ? "Today" : "Selected day"}</p>
+            <h3 style={{ fontFamily: F.display, fontSize: 22, fontWeight: 800, margin: "4px 0 12px", letterSpacing: "-.02em" }}>{fmtLong(sel)}</h3>
+            <div className="mb-4 rounded-lg px-3 py-2" style={{ fontSize: 14, background: selClosed || selWindows.length === 0 ? T.redL : T.greenL, color: selClosed || selWindows.length === 0 ? "#991B1B" : "#166534", border: `1px solid ${selClosed || selWindows.length === 0 ? T.redB : T.greenB}` }}>
+              <b>Parish office:</b> {selClosed ? "Closed" : selWindows.length === 0 ? "Closed (not an office day)" : selHours}
+            </div>
+            {selList.length === 0 ? (
+              <p style={{ fontSize: 15, color: T.muted, margin: 0 }}>No activities posted{cat !== "All" ? ` for ${cat}` : ""} on this day.</p>
+            ) : (
+              <ul className="m-0 list-none space-y-4 p-0">
+                {selList.map(a => {
+                  const c = ACTIVITY_CATS[a.category] ?? { col: T.sub, light: "#F3F4F6" };
+                  return (
+                    <li key={a.id} className="pl-3" style={{ borderLeft: `4px solid ${c.col}` }}>
+                      <span style={{ display: "inline-block", padding: "1px 9px", borderRadius: 999, background: c.light, color: c.col, fontFamily: F.head, fontSize: 12, fontWeight: 700 }}>{a.category}</span>
+                      <p style={{ fontFamily: F.head, fontSize: 16, fontWeight: 700, margin: "5px 0 2px", color: T.text }}>{a.title}</p>
+                      <p style={{ fontSize: 14, color: T.sub, margin: 0 }}>{fmtRange(a.start, a.end, a.allDay)}{a.location ? ` · ${a.location}` : ""}</p>
+                      {a.notes && <p style={{ fontSize: 13, color: T.muted, margin: "3px 0 0" }}>{a.notes}</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
+          <Card className="p-5">
+            <h3 style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, margin: "0 0 8px" }}>Regular office hours</h3>
+            <p style={{ fontSize: 15, lineHeight: 1.7, color: T.sub, margin: 0 }}>
+              <b>Mon–Fri</b> · {settings.hoursWeekday}<br /><b>Saturday</b> · {settings.hoursSat}<br /><b>Sunday</b> · {settings.hoursSun}
+            </p>
+          </Card>
+        </div>
       </div>
     </Wrap>
   );

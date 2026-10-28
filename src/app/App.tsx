@@ -4,7 +4,7 @@ import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import logoSrc from "@/imports/logo.png";
 import parishBanner from "@/imports/PDSPA1.jpg";
 import { form97p1B64, form97p2B64 } from "@/imports/form97base64";
-import { T, F, STATUS_CFG, ACTIVITY_CATS, type PillCfg, type ReqStatus } from "./tokens";
+import { T, F, STATUS_CFG, ACTIVITY_CATS, SACR, type PillCfg, type ReqStatus } from "./tokens";
 import PublicSite from "./public/PublicSite";
 import type { OnlineSubmission } from "./public/publicLogic";
 /* Recharts removed — custom SimpleBarChart used instead to avoid duplicate-key warnings */
@@ -12,16 +12,6 @@ import type { OnlineSubmission } from "./public/publicLogic";
 /* Design tokens (T, F) and request status colours are shared with the public website — see ./tokens.ts */
 
 /* ─── SERVICE CONFIG ─────────────────────────────────────── */
-const SACR: Record<string, { col: string; light: string; cert: string }> = {
-  "Baptism":                  { col:"#2563EB", light:"#EFF6FF", cert:"received the Sacrament of Holy Baptism" },
-  "Confirmation":             { col:"#7C3AED", light:"#F5F3FF", cert:"received the Sacrament of Confirmation" },
-  "First Holy Communion":     { col:"#B45309", light:"#FFFBEB", cert:"received the Sacrament of First Holy Communion" },
-  "Marriage":                 { col:"#BE185D", light:"#FDF2F8", cert:"were united in the Sacrament of Holy Matrimony" },
-  "Funeral Mass":             { col:"#475569", light:"#F1F5F9", cert:"was commended to God in the Funeral Mass" },
-  "Death Certificate":        { col:"#334155", light:"#F8FAFC", cert:"is recorded in the Register of Dead of this Parish" },
-  "No Record":                { col:"#DC2626", light:"#FEF2F2", cert:"no sacramental record was found on file" },
-  "Good Standing/Membership": { col:"#16A34A", light:"#F0FDF4", cert:"is a registered parishioner in good standing" },
-};
 const SACR_LIST = Object.keys(SACR);
 /* Only these four have parish-approved printable layouts */
 const PRINTABLE = ["Baptism", "Confirmation", "Marriage", "Death Certificate"];

@@ -53,3 +53,15 @@ export const ACTIVITY_CATS: Record<string, { col: string; light: string }> = {
   "Holiday":           { col:"#0F766E", light:"#F0FDFA" },
   "Closed Office Day": { col:"#DC2626", light:"#FEF2F2" },
 };
+
+/* Service colours (and certificate wording) keyed by SARMS service name */
+export const SACR: Record<string, { col: string; light: string; cert: string }> = {
+  "Baptism":                  { col:"#2563EB", light:"#EFF6FF", cert:"received the Sacrament of Holy Baptism" },
+  "Confirmation":             { col:"#7C3AED", light:"#F5F3FF", cert:"received the Sacrament of Confirmation" },
+  "First Holy Communion":     { col:"#B45309", light:"#FFFBEB", cert:"received the Sacrament of First Holy Communion" },
+  "Marriage":                 { col:"#BE185D", light:"#FDF2F8", cert:"were united in the Sacrament of Holy Matrimony" },
+  "Funeral Mass":             { col:"#475569", light:"#F1F5F9", cert:"was commended to God in the Funeral Mass" },
+  "Death Certificate":        { col:"#334155", light:"#F8FAFC", cert:"is recorded in the Register of Dead of this Parish" },
+  "No Record":                { col:"#DC2626", light:"#FEF2F2", cert:"no sacramental record was found on file" },
+  "Good Standing/Membership": { col:"#16A34A", light:"#F0FDF4", cert:"is a registered parishioner in good standing" },
+};

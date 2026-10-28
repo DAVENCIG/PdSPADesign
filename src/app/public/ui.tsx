@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
-import { T, F } from "../tokens";
+import { BadgeCheck, Cross, Droplets, Flame, FileSearch, FileText, Flower2, HeartHandshake, ScrollText, Wheat, type LucideIcon } from "lucide-react";
+import { T, F, SACR } from "../tokens";
 
 export const Wrap = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
   <div className={`mx-auto w-full max-w-[1200px] px-5 sm:px-8 ${className}`}>{children}</div>
@@ -74,5 +75,27 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "warn" | "
     <div role={tone === "error" ? "alert" : "status"} style={{ background: c.bg, border: `1px solid ${c.bd}`, color: c.fg, borderRadius: 12, padding: "14px 16px", fontSize: 16, lineHeight: 1.5 }}>
       {children}
     </div>
+  );
+}
+
+/* One icon + colour per SARMS service; unknown (newly configured) services fall back to a document icon. */
+const SERVICE_ICON: Record<string, LucideIcon> = {
+  "Baptism": Droplets,
+  "Confirmation": Flame,
+  "First Holy Communion": Wheat,
+  "Marriage": HeartHandshake,
+  "Funeral Mass": Cross,
+  "Death Certificate": ScrollText,
+  "No Record": FileSearch,
+  "Good Standing/Membership": BadgeCheck,
+};
+
+export function ServiceIcon({ name, size = 48 }: { name: string; size?: number }) {
+  const Icon = SERVICE_ICON[name] ?? FileText;
+  const c = SACR[name] ?? { col: T.priHov, light: T.priLight };
+  return (
+    <span aria-hidden className="inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size, borderRadius: size * 0.3, background: c.light, color: c.col, border: `1.5px solid ${c.col}33` }}>
+      <Icon size={size * 0.5} strokeWidth={2} />
+    </span>
   );
 }
