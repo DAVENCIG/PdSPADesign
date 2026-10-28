@@ -4,26 +4,12 @@ import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import logoSrc from "@/imports/logo.png";
 import parishBanner from "@/imports/PDSPA1.jpg";
 import { form97p1B64, form97p2B64 } from "@/imports/form97base64";
+import { T, F, STATUS_CFG, ACTIVITY_CATS, type PillCfg, type ReqStatus } from "./tokens";
+import PublicSite from "./public/PublicSite";
+import type { OnlineSubmission } from "./public/publicLogic";
 /* Recharts removed — custom SimpleBarChart used instead to avoid duplicate-key warnings */
 
-/* ─── TOKENS ─────────────────────────────────────────────── */
-const T = {
-  bg:       "#FFFDF5",
-  surface:  "#FFFFFF",
-  border:   "#E3DCC0",
-  borderMd: "#BFB27A",
-  text:     "#1A1400",
-  sub:      "#4A4018",
-  muted:    "#6E5F28",
-  primary:  "#C9960A",
-  priHov:   "#8A6706",
-  priLight: "#FEF9E7",
-  green:    "#15803D", greenL: "#F0FDF4", greenB: "#BBF7D0",
-  amber:    "#92400E", amberL: "#FFFBEB", amberB: "#FDE68A",
-  red:      "#DC2626", redL:   "#FEF2F2", redB:   "#FECACA",
-  blue:     "#1D4ED8", blueL:  "#EFF6FF", blueB:  "#BFDBFE",
-  purple:   "#7C3AED", purpleL:"#F5F3FF", purpleB:"#DDD6FE",
-};
+/* Design tokens (T, F) and request status colours are shared with the public website — see ./tokens.ts */
 
 /* ─── SERVICE CONFIG ─────────────────────────────────────── */
 const SACR: Record<string, { col: string; light: string; cert: string }> = {
@@ -41,16 +27,6 @@ const SACR_LIST = Object.keys(SACR);
 const PRINTABLE = ["Baptism", "Confirmation", "Marriage", "Death Certificate"];
 const CERT_CODE: Record<string, string> = { "Baptism":"BAP", "Confirmation":"CON", "Marriage":"MAR", "Death Certificate":"DTH" };
 
-const ACTIVITY_CATS: Record<string, { col: string; light: string }> = {
-  "Wedding Mass":      { col:"#BE185D", light:"#FDF2F8" },
-  "Funeral Mass":      { col:"#475569", light:"#F1F5F9" },
-  "Fiesta Mass":       { col:"#C2410C", light:"#FFF7ED" },
-  "Holy Mass":         { col:"#2563EB", light:"#EFF6FF" },
-  "Barangay Mass":     { col:"#A16207", light:"#FEFCE8" },
-  "Parish Activity":   { col:"#7C3AED", light:"#F5F3FF" },
-  "Holiday":           { col:"#0F766E", light:"#F0FDFA" },
-  "Closed Office Day": { col:"#DC2626", light:"#FEF2F2" },
-};
 const ACTIVITY_CAT_LIST = Object.keys(ACTIVITY_CATS);
 const MASS_CATS = ["Wedding Mass","Funeral Mass","Fiesta Mass","Holy Mass","Barangay Mass"];
 
@@ -84,7 +60,6 @@ const MAR_SECTIONS: { id: MarSec; label: string; hint: string }[] = [
 
 /* ─── TYPES ──────────────────────────────────────────────── */
 type View = "dashboard"|"requests"|"calendar"|"book"|"certificates"|"issuance"|"reports"|"staff"|"services"|"settings"|"audit";
-type ReqStatus = "pending"|"verified"|"scheduled"|"rejected"|"completed"|"cancelled";
 type UserRole  = "staff"|"admin";
 interface Auth { id: string; name: string; username: string; role: UserRole; superadmin: boolean; since: string; }
 interface Focus { requestId?: string; bookPrefill?: string; certRequestId?: string; }
@@ -161,6 +136,8 @@ interface Appointment {
   prefDate: string; prefTime: string;
   apprDate: string; apprStart: string; apprEnd: string;
   orNo: string; orDate: string; staffNotes: string; verifiedBy: string;
+  /** "online" = submitted through the public website; absent = encoded by office staff */
+  source?: "online";
 }
 interface Activity {
   id: string; category: string; title: string; date: string;
@@ -200,7 +177,7 @@ interface ParishSettings {
 interface Toast { id: number; type: "success"|"error"|"info"|"warning"; message: string; }
 
 /* ─── SEED DATA ──────────────────────────────────────────── */
-let _aid = 12;
+let _aid = 13; // seed requests use SARMS-2026-001 … 012
 const nid = () => `SARMS-2026-${String(_aid++).padStart(3,"0")}`;
 let _actid = 10;
 const nextActId = () => `ACT-${String(++_actid).padStart(3,"0")}`;
@@ -368,7 +345,7 @@ function downloadCSV(name: string, rows: (string|number)[][]) {
 }
 
 /* ─── APP CONTEXT ────────────────────────────────────────── */
-type LogInput = Omit<AuditLog, "id"|"at"|"actor"|"username"|"device"|"ip"|"reason"|"client"|"recordType"|"recordId"> & Partial<Pick<AuditLog,"reason"|"client"|"recordType"|"recordId"|"actor"|"username">>;
+type LogInput = Omit<AuditLog, "id"|"at"|"actor"|"username"|"device"|"ip"|"reason"|"client"|"recordType"|"recordId"> & Partial<Pick<AuditLog,"reason"|"client"|"recordType"|"recordId"|"actor"|"username"|"device"|"ip">>;
 interface Ctx {
   auth: Auth;
   push: (t: Toast["type"], m: string) => void;
@@ -382,15 +359,6 @@ const who = (a: Auth) => a.role === "admin" ? `Admin ${a.name}` : a.name;
 const clock = () => fmtTime(nowStamp().slice(11,16));
 
 /* ─── STATUS PILLS ───────────────────────────────────────── */
-type PillCfg = { label: string; col: string; bg: string };
-const STATUS_CFG: Record<ReqStatus, PillCfg> = {
-  pending:   { label:"Pending",   col:"#92400E", bg:"#FEF3C7" },
-  verified:  { label:"Verified",  col:"#1E40AF", bg:"#DBEAFE" },
-  scheduled: { label:"Scheduled", col:"#065F46", bg:"#D1FAE5" },
-  rejected:  { label:"Rejected",  col:"#991B1B", bg:"#FEE2E2" },
-  completed: { label:"Completed", col:"#166534", bg:"#F0FDF4" },
-  cancelled: { label:"Cancelled", col:"#4B5563", bg:"#F3F4F6" },
-};
 const REQ_STATUSES = Object.keys(STATUS_CFG) as ReqStatus[];
 const MISC_CFG: Record<string, PillCfg> = {
   active:    { label:"Active",    col:"#166534", bg:"#F0FDF4" },
@@ -402,23 +370,23 @@ const MISC_CFG: Record<string, PillCfg> = {
 };
 
 function Pill({ cfg }: { cfg: PillCfg }) {
-  return <span style={{ padding:"3px 10px", borderRadius:99, fontSize:14, fontWeight:600, display:"inline-flex", alignItems:"center", gap:6,
+  return <span style={{ padding:"3px 10px", borderRadius:99, fontFamily:F.head, fontSize:13, fontWeight:600, display:"inline-flex", alignItems:"center", gap:6,
     background:cfg.bg, color:cfg.col, whiteSpace:"nowrap" }}><span aria-hidden style={{ width:7, height:7, borderRadius:99, background:cfg.col }}/>{cfg.label}</span>;
 }
 function Badge({ status }: { status: ReqStatus }) { return <Pill cfg={STATUS_CFG[status]}/>; }
 function SPill({ s }: { s: string }) { return <Pill cfg={MISC_CFG[s]}/>; }
 function CatTag({ cat, faded }: { cat: string; faded?: boolean }) {
   const c = ACTIVITY_CATS[cat] ?? { col:T.sub, light:T.bg };
-  return <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:600, whiteSpace:"nowrap",
+  return <span style={{ padding:"2px 8px", borderRadius:4, fontFamily:F.head, fontSize:13, fontWeight:600, whiteSpace:"nowrap",
     background:c.light, color:c.col, opacity: faded ? .55 : 1 }}>{cat}</span>;
 }
 function RoleTag({ a }: { a: { role: UserRole; superadmin: boolean } }) {
   return (
     <span style={{ display:"inline-flex", gap:4 }}>
-      <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:600,
+      <span style={{ padding:"2px 8px", borderRadius:4, fontFamily:F.head, fontSize:13, fontWeight:600,
         background: a.role === "admin" ? T.priLight : T.bg, color: a.role === "admin" ? T.priHov : T.sub,
         border:`1px solid ${a.role === "admin" ? T.borderMd : T.border}` }}>{a.role === "admin" ? "Admin" : "Staff"}</span>
-      {a.superadmin && <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:700, background:"#1A1400", color:"#F5D77A" }}>Superadmin</span>}
+      {a.superadmin && <span style={{ padding:"2px 8px", borderRadius:4, fontFamily:F.head, fontSize:13, fontWeight:700, background:"#1A1400", color:"#F5D77A" }}>Superadmin</span>}
     </span>
   );
 }
@@ -447,7 +415,7 @@ function PageHead({ title, sub, right }: { title: string; sub?: string; right?: 
   return (
     <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:22, gap:16, flexWrap:"wrap" }}>
       <div>
-        <h1 style={{ fontSize:26, fontWeight:700, color:T.text, margin:0, letterSpacing:"-.01em" }}>{title}</h1>
+        <h1 style={{ fontFamily:F.head, fontSize:28, fontWeight:700, color:T.text, margin:0, letterSpacing:"-.015em", lineHeight:1.2 }}>{title}</h1>
         {sub && <p style={{ fontSize:16, color:T.sub, marginTop:6, marginBottom:0, maxWidth:760, lineHeight:1.5 }}>{sub}</p>}
       </div>
       {right && <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>{right}</div>}
@@ -459,7 +427,7 @@ function KV({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"170px 1fr", gap:12, padding:"9px 0", borderBottom:`1px solid ${T.border}` }}>
       <span style={{ fontSize:15, fontWeight:600, color:T.sub, paddingTop:1 }}>{k}</span>
-      <span style={{ fontSize:16, color:T.text, fontFamily: mono ? "ui-monospace, monospace" : undefined, wordBreak:"break-word" }}>{v || "—"}</span>
+      <span style={{ fontSize:16, color:T.text, fontFamily:F.body, letterSpacing: mono ? ".03em" : undefined, wordBreak:"break-word" }}>{v || "—"}</span>
     </div>
   );
 }
@@ -485,7 +453,7 @@ function Drawer({ open, title, sub, onClose, children, footer }:
         boxShadow:"-8px 0 32px rgba(0,0,0,.12)", display:"flex", flexDirection:"column" }}>
         <div style={{ padding:"18px 22px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
           <div>
-            <div style={{ fontSize:20, fontWeight:700, color:T.text }}>{title}</div>
+            <div style={{ fontFamily:F.head, fontSize:20, fontWeight:700, color:T.text, letterSpacing:"-.01em" }}>{title}</div>
             {sub && <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>{sub}</div>}
           </div>
           <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="sarms-close"><X size={18}/> Close</button>
@@ -529,18 +497,18 @@ function ConfirmModal({ open, title, message, confirmLabel, danger, reasonLabel,
 }
 
 const chipBtn = (active: boolean): React.CSSProperties => ({
-  padding:"8px 14px", minHeight:40, fontSize:15, fontWeight: active ? 700 : 500, borderRadius:99, cursor:"pointer",
+  padding:"8px 14px", minHeight:40, fontFamily:F.head, fontSize:14, fontWeight: active ? 700 : 500, borderRadius:99, cursor:"pointer",
   border:`${active ? 2 : 1}px solid ${active ? T.primary : T.borderMd}`, background: active ? T.priLight : T.surface, color: active ? T.priHov : T.sub,
   display:"inline-flex", alignItems:"center", gap:6,
 });
 const linkBtn: React.CSSProperties = { fontSize:15, color:T.priHov, background:"none", border:"none", cursor:"pointer", padding:"4px 0", fontWeight:600, textDecoration:"underline", textUnderlineOffset:3 };
 const g2: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 };
 const g3: React.CSSProperties = { display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 };
-const secLabel: React.CSSProperties = { fontSize:17, fontWeight:700, color:T.text, margin:"10px 0 4px", paddingBottom:6, borderBottom:`2px solid ${T.priLight}` };
+const secLabel: React.CSSProperties = { fontFamily:F.head, fontSize:16, fontWeight:700, color:T.text, margin:"10px 0 4px", paddingBottom:6, borderBottom:`2px solid ${T.priLight}` };
 function TypeTag({ type }: { type: string }) {
   const s = SACR[type];
   return (
-    <span style={{ padding:"2px 8px", borderRadius:4, fontSize:14, fontWeight:600,
+    <span style={{ padding:"2px 8px", borderRadius:4, fontFamily:F.head, fontSize:13, fontWeight:600,
       background: s?.light ?? "#F3F4F6", color: s?.col ?? T.sub, whiteSpace:"nowrap" }}>
       {type}
     </span>
@@ -551,7 +519,7 @@ function Btn({ variant = "primary", size = "md", children, style, ...rest }:
   { variant?: "primary"|"outline"|"ghost"|"danger"; size?: "sm"|"md";
     style?: React.CSSProperties; children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const p = size === "sm" ? "6px 12px" : "10px 18px";
-  const fs = size === "sm" ? 15 : 16;
+  const fs = size === "sm" ? 14 : 15;
   const vs: Record<string, React.CSSProperties> = {
     primary: { background:T.priHov, color:"#fff",    border:`1px solid ${T.priHov}` },
     outline: { background:"#fff",    color:T.priHov, border:`1.5px solid ${T.primary}` },
@@ -559,7 +527,7 @@ function Btn({ variant = "primary", size = "md", children, style, ...rest }:
     danger:  { background:T.red,     color:"#fff",          border:`1px solid ${T.red}` },
   };
   return (
-    <button {...rest} className={`sarms-btn sarms-btn-${variant} ${rest.className ?? ""}`} style={{ padding:p, fontSize:fs, fontWeight:600, fontFamily:"inherit",
+    <button {...rest} className={`sarms-btn sarms-btn-${variant} ${rest.className ?? ""}`} style={{ padding:p, fontSize:fs, fontWeight:600, fontFamily:F.head, letterSpacing:".01em",
       minHeight: size === "sm" ? 36 : 44, borderRadius:8, cursor:rest.disabled?"not-allowed":"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:7,
       whiteSpace:"nowrap", transition:"background .15s, box-shadow .15s, filter .15s", opacity:rest.disabled?.5:1,
       ...vs[variant], ...style }}>
@@ -570,7 +538,7 @@ function Btn({ variant = "primary", size = "md", children, style, ...rest }:
 
 const inp: React.CSSProperties = {
   width:"100%", padding:"10px 12px", minHeight:44, border:`1px solid ${T.borderMd}`,
-  borderRadius:8, fontSize:16, fontFamily:"inherit", color:T.text,
+  borderRadius:8, fontSize:16, fontFamily:F.body, color:T.text,
   background:"#fff", outline:"none",
 };
 function FI({ ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -613,7 +581,7 @@ function CardHead({ title, sub, right }: { title: React.ReactNode; sub?: string;
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
       padding:"16px 20px", borderBottom:`1px solid ${T.border}`, gap:12, flexWrap:"wrap" }}>
       <div>
-        <div style={{ fontSize:18, fontWeight:700, color:T.text }}>{title}</div>
+        <div style={{ fontFamily:F.head, fontSize:18, fontWeight:700, color:T.text, letterSpacing:"-.01em" }}>{title}</div>
         {sub && <div style={{ fontSize:15, color:T.sub, marginTop:3 }}>{sub}</div>}
       </div>
       {right}
@@ -674,7 +642,7 @@ function Modal({ open, title, onClose, children, footer, maxW = 500 }:
         width:"100%", maxWidth:maxW, boxShadow:"0 8px 32px rgba(0,0,0,.12)", maxHeight:"90vh", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
           padding:"16px 22px", borderBottom:`1px solid ${T.border}` }}>
-          <span style={{ fontWeight:700, fontSize:20, color:T.text }}>{title}</span>
+          <span style={{ fontFamily:F.head, fontWeight:700, fontSize:20, color:T.text, letterSpacing:"-.01em" }}>{title}</span>
           <button onClick={onClose} aria-label="Close" title="Close (Esc)" className="sarms-close"><X size={18}/> Close</button>
         </div>
         <div style={{ padding:"20px 22px", overflowY:"auto", flex:1 }}>{children}</div>
@@ -689,11 +657,11 @@ function Modal({ open, title, onClose, children, footer, maxW = 500 }:
 
 /* ─── TABLE HELPERS ──────────────────────────────────────── */
 const TH: React.CSSProperties = {
-  padding:"12px 14px", textAlign:"left", fontSize:15, fontWeight:700,
+  padding:"12px 14px", textAlign:"left", fontFamily:F.head, fontSize:14, fontWeight:700, letterSpacing:".01em",
   color:T.text, borderBottom:`2px solid ${T.borderMd}`, background:"#FBF6E4", whiteSpace:"nowrap",
   position:"sticky", top:0, zIndex:1,
 };
-const TD: React.CSSProperties = { padding:"13px 14px", fontSize:16, lineHeight:1.4, color:T.text, verticalAlign:"middle" };
+const TD: React.CSSProperties = { padding:"13px 14px", fontFamily:F.body, fontSize:16, lineHeight:1.4, color:T.text, verticalAlign:"middle" };
 
 function SortTh({ label, field, sf, sd, sort }: { label: string; field: string; sf: unknown; sd: string; sort: () => void }) {
   const active = sf === field;
@@ -767,23 +735,24 @@ function generateCertHTML(appt: Appointment, logoB64: string, mf?: MarriageFormD
   const parts = appt.subjectName.split("&").map(s => s.trim());
 
   const base = (title: string, body: string, sigLabel: string) => `<!DOCTYPE html><html><head><meta charset="UTF-8">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'Inter',sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+      body{font-family:Arial,Helvetica,sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
       .cert{width:680px;padding:28px 36px;border:4px double #1A1400}
       .cert-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
       .cert-center{flex:1;text-align:center;padding:0 10px}
-      .cert-center .diocese{font-size:11px;letter-spacing:.04em;color:#555;margin-bottom:2px}
-      .cert-center .parish{font-size:15px;font-weight:800;color:#1A1400;letter-spacing:.02em;line-height:1.2}
+      .cert-center .diocese{font-family:'Montserrat',sans-serif;font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#555;margin-bottom:3px}
+      .cert-center .parish{font-family:'Montserrat',sans-serif;font-size:15px;font-weight:800;color:#1A1400;letter-spacing:.06em;line-height:1.2}
       .cert-center .address{font-size:10px;color:#666;margin-top:3px}
-      .cert-title{text-align:center;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#1A1400;margin:14px 0 18px;border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:8px 0}
+      .cert-title{text-align:center;font-family:'Garet','Montserrat',sans-serif;font-size:23px;font-weight:800;line-height:1.2;letter-spacing:-.03em;color:#1A1400;margin:12px 0 16px;border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:6px 0 8px}
+      .display{font-family:'Garet','Montserrat',sans-serif;font-weight:700}
       .cert-body{font-size:12.5px;line-height:1.9;color:#1A1400}
       .cert-body p{margin-bottom:10px}
       .cert-body strong{font-weight:700}
       .cert-footer{margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end}
       .sig-block .line{border-top:1px solid #333;padding-top:5px;margin-top:32px;width:220px}
-      .sig-block .name{font-size:11px;font-weight:700;text-align:center}
+      .sig-block .name{font-family:'Montserrat',sans-serif;font-size:10.5px;font-weight:700;text-align:center;letter-spacing:.04em}
       .nb{font-size:9.5px;color:#666;text-align:center;margin-top:16px;font-style:italic}
       .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
       .two-col .head{font-weight:700;text-decoration:underline;margin-bottom:6px;font-size:13px}
@@ -808,17 +777,17 @@ function generateCertHTML(appt: Appointment, logoB64: string, mf?: MarriageFormD
         <div class="sig-block"><div class="line"><div class="name">${sigLabel}</div></div></div>
       </div>
     </div>
-    <script>window.onload=()=>window.print()<\/script></body></html>`;
+    <script>window.onload=()=>{(document.fonts?document.fonts.ready:Promise.resolve()).then(()=>window.print())}<\/script></body></html>`;
 
   switch (appt.sacramentType) {
     case "Baptism":
       return base("Certificate of Baptism", `
-        <p style="text-align:center;font-size:15px;font-weight:700">${appt.subjectName}</p>
+        <p class="display" style="text-align:center;font-size:17px;line-height:1.3;margin-bottom:8px">${appt.subjectName}</p>
         <p>Child of ${ln(190)} (Father's Name) &nbsp; Of ${ln(160)} (Place of Birth)</p>
         <p>And ${ln(210)} (Mother's Name) &nbsp; Of ${ln(160)} (Place of Birth)</p>
         <p>Was Born in ${ln(200)} &nbsp; Legitimacy ${ln(120)}</p>
         <p>On the ${ln(60)} day of ${ln(140)} In the year ${ln(80)}</p>
-        <p style="text-align:center;font-style:italic;font-weight:700;font-size:14px;margin:8px 0">Was Solemnly Baptized</p>
+        <p class="display" style="text-align:center;font-size:15px;line-height:1.3;margin:8px 0">Was Solemnly Baptized</p>
         <p>On the ${ln(60)} day of ${ln(140)} in the year ${ln(80)}</p>
         <p>By the Rev. ${ln(240)}</p>
         <p>The sponsors being ${ln(190)} and ${ln(190)}</p>
@@ -1031,21 +1000,22 @@ ${pg(p2)}`
 
     case "Confirmation":
       return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
         <style>
           *{box-sizing:border-box;margin:0;padding:0}
-          body{font-family:'Inter',sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+          body{font-family:Arial,Helvetica,sans-serif;background:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
           .cert{width:660px;padding:28px 36px;border:4px double #1A1400}
           .cert-top{text-align:center;margin-bottom:16px}
-          .cert-top .parish{font-size:15px;font-weight:800;color:#1A1400;letter-spacing:.02em}
+          .cert-top .parish{font-family:'Montserrat',sans-serif;font-size:15px;font-weight:800;color:#1A1400;letter-spacing:.06em}
           .cert-top .address{font-size:10px;color:#666;margin-top:3px}
-          .cert-title{text-align:center;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#1A1400;margin:14px 0 18px;border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:8px 0}
+          .cert-title{text-align:center;font-family:'Garet','Montserrat',sans-serif;font-size:23px;font-weight:800;line-height:1.2;letter-spacing:-.03em;color:#1A1400;margin:12px 0 16px;border-top:1px solid #ccc;border-bottom:1px solid #ccc;padding:6px 0 8px}
+      .display{font-family:'Garet','Montserrat',sans-serif;font-weight:700}
           .cert-body{font-size:12.5px;line-height:2;color:#1A1400}
           .cert-body p{margin-bottom:6px}
           .ln{border-bottom:1px solid #333;display:inline-block;min-width:160px;vertical-align:bottom}
           .cert-footer{margin-top:28px;display:flex;justify-content:space-between;align-items:flex-end}
           .sig-block .line{border-top:1px solid #333;padding-top:5px;margin-top:32px;width:220px}
-          .sig-block .name{font-size:11px;font-weight:700;text-align:center}
+          .sig-block .name{font-family:'Montserrat',sans-serif;font-size:10.5px;font-weight:700;text-align:center;letter-spacing:.04em}
           .nb{font-size:9.5px;color:#666;text-align:center;margin-top:16px;font-style:italic}
           @media print{body{padding:0}@page{size:A4 portrait;margin:14mm}}
         </style></head><body>
@@ -1075,7 +1045,7 @@ ${pg(p2)}`
             <div class="sig-block"><div class="line"><div class="name">Parish Priest / Parochial Vicar</div></div></div>
           </div>
         </div>
-        <script>window.onload=()=>window.print()<\/script></body></html>`;
+        <script>window.onload=()=>{(document.fonts?document.fonts.ready:Promise.resolve()).then(()=>window.print())}<\/script></body></html>`;
 
     default: {
       const s = SACR[appt.sacramentType] ?? SACR["No Record"];
@@ -1206,7 +1176,7 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
         <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between",
           padding:"14px 18px 10px", borderBottom:`1px solid ${T.border}` }}>
           <div>
-            <div style={{ fontWeight:700, fontSize:18, color:T.text }}>Marriage Details — {subjectName}</div>
+            <div style={{ fontFamily:F.head, fontWeight:700, fontSize:19, color:T.text, letterSpacing:"-.01em" }}>Marriage Details — {subjectName}</div>
             <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>PSA Municipal Form No. 97 — Certificate of Marriage · Back-office structured data · auto-fills the printed Form 97</div>
           </div>
           <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", fontSize:25, color:T.muted, lineHeight:1, padding:0 }}>×</button>
@@ -1223,15 +1193,15 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
                   <span style={{ width:20, height:20, borderRadius:99, flexShrink:0, fontSize:13, fontWeight:700,
                     display:"flex", alignItems:"center", justifyContent:"center",
                     background: a ? T.primary : T.surface, color: a ? "#fff" : T.muted, border:`1px solid ${a ? T.primary : T.borderMd}` }}>{i+1}</span>
-                  <span style={{ fontSize:15, fontWeight: a ? 700 : 500, color: a ? T.text : T.sub, lineHeight:1.25 }}>{s.label}</span>
+                  <span style={{ fontFamily:F.head, fontSize:14, fontWeight: a ? 700 : 500, color: a ? T.text : T.sub, lineHeight:1.3 }}>{s.label}</span>
                 </button>
               );
             })}
           </nav>
           <div style={{ flex:1, padding:"16px 20px", overflowY:"auto" }}>
             <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:14, color:T.muted, textTransform:"uppercase", letterSpacing:".06em", fontWeight:700 }}>Section {idx+1} of {MAR_SECTIONS.length}</div>
-              <div style={{ fontSize:18, fontWeight:700, color:T.text }}>{cur.label}</div>
+              <div style={{ fontFamily:F.head, fontSize:12, color:T.muted, textTransform:"uppercase", letterSpacing:".12em", fontWeight:700 }}>Section {idx+1} of {MAR_SECTIONS.length}</div>
+              <div style={{ fontFamily:F.head, fontSize:19, fontWeight:700, color:T.text, letterSpacing:"-.01em" }}>{cur.label}</div>
               <div style={{ fontSize:15, color:T.muted }}>{cur.hint}</div>
             </div>
 {sec === "registry" && (
@@ -1274,12 +1244,12 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
 {sec === "consent" && (
 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-<div style={{ fontWeight:700, fontSize:15, color:T.primary, textTransform:"uppercase", letterSpacing:".06em" }}>Husband — Person giving consent / advice</div>
+<div style={{ fontFamily:F.head, fontWeight:700, fontSize:14, color:T.primary, textTransform:"uppercase", letterSpacing:".08em" }}>Husband — Person giving consent / advice</div>
                 <div style={g3}><div><FL>12. Consent Giver First</FL><FI value={d.hConFirst} onChange={e=>upd("hConFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.hConMiddle} onChange={e=>upd("hConMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.hConLast} onChange={e=>upd("hConLast",e.target.value)}/></div></div>
                 <div style={g2}><div><FL>13. Relationship</FL><FI value={d.hConRel} onChange={e=>upd("hConRel",e.target.value)}/></div><div><FL>14. Consent Giver Residence</FL><FI value={d.hConRes} onChange={e=>upd("hConRes",e.target.value)}/></div></div>
 </div>
 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-<div style={{ fontWeight:700, fontSize:15, color:T.primary, textTransform:"uppercase", letterSpacing:".06em" }}>Wife — Person giving consent / advice</div>
+<div style={{ fontFamily:F.head, fontWeight:700, fontSize:14, color:T.primary, textTransform:"uppercase", letterSpacing:".08em" }}>Wife — Person giving consent / advice</div>
                 <div style={g3}><div><FL>12. Consent Giver First</FL><FI value={d.wConFirst} onChange={e=>upd("wConFirst",e.target.value)}/></div><div><FL>Middle</FL><FI value={d.wConMiddle} onChange={e=>upd("wConMiddle",e.target.value)}/></div><div><FL>Last</FL><FI value={d.wConLast} onChange={e=>upd("wConLast",e.target.value)}/></div></div>
                 <div style={g2}><div><FL>13. Relationship</FL><FI value={d.wConRel} onChange={e=>upd("wConRel",e.target.value)}/></div><div><FL>14. Consent Giver Residence</FL><FI value={d.wConRes} onChange={e=>upd("wConRes",e.target.value)}/></div></div>
 </div>
@@ -1287,13 +1257,13 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
 )}
 {sec === "details" && (
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>15. Place of Marriage</div>
+              <div style={{ fontFamily:F.head, fontWeight:700, fontSize:14, color:T.sub, textTransform:"uppercase", letterSpacing:".08em" }}>15. Place of Marriage</div>
               <div style={g3}>
                 <div><FL>Office/House/Church/Mosque of</FL><FI value={d.placeVenue} onChange={e=>upd("placeVenue",e.target.value)}/></div>
                 <div><FL>City / Municipality</FL><FI value={d.placeCityMun} onChange={e=>upd("placeCityMun",e.target.value)}/></div>
                 <div><FL>Province</FL><FI value={d.placeProvince} onChange={e=>upd("placeProvince",e.target.value)}/></div>
               </div>
-              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginTop:8 }}>16. Date of Marriage</div>
+              <div style={{ fontFamily:F.head, fontWeight:700, fontSize:14, color:T.sub, textTransform:"uppercase", letterSpacing:".08em", marginTop:8 }}>16. Date of Marriage</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr", gap:10 }}>
                 <div><FL>Day</FL><FI value={d.marDay} onChange={e=>upd("marDay",e.target.value)} placeholder="e.g., 12"/></div>
                 <div><FL>Month</FL><FI value={d.marMonth} onChange={e=>upd("marMonth",e.target.value)} placeholder="e.g., September"/></div>
@@ -1308,7 +1278,7 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
 )}
 {sec === "officer" && (
 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>19. Certification of the Solemnizing Officer</div>
+              <div style={{ fontFamily:F.head, fontWeight:700, fontSize:14, color:T.sub, textTransform:"uppercase", letterSpacing:".08em" }}>19. Certification of the Solemnizing Officer</div>
               <div style={g3}>
                 <div><FL>Officer Name</FL><FI value={d.solOfficer} onChange={e=>upd("solOfficer",e.target.value)}/></div>
                 <div><FL>Position / Designation</FL><FI value={d.solPosition} onChange={e=>upd("solPosition",e.target.value)}/></div>
@@ -1340,7 +1310,7 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
 )}
 {sec === "witnesses" && (
 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-              <div style={{ fontWeight:700, fontSize:15, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginTop:4 }}>20. Witnesses (Print Name)</div>
+              <div style={{ fontFamily:F.head, fontWeight:700, fontSize:14, color:T.sub, textTransform:"uppercase", letterSpacing:".08em", marginTop:4 }}>20. Witnesses (Print Name)</div>
               <div style={g2}>
                 <div><FL>Witness 1</FL><FI value={d.wit1} onChange={e=>upd("wit1",e.target.value)}/></div>
                 <div><FL>Witness 2</FL><FI value={d.wit2} onChange={e=>upd("wit2",e.target.value)}/></div>
@@ -1353,7 +1323,7 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
               <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:16 }}>
                 <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:d.affSolInclude?14:0 }}>
                   <input type="checkbox" checked={d.affSolInclude} onChange={e=>upd("affSolInclude",e.target.checked)}/>
-                  <span style={{ fontSize:15, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>Affidavit of Solemnizing Officer</span>
+                  <span style={{ fontFamily:F.head, fontSize:14, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".08em" }}>Affidavit of Solemnizing Officer</span>
                 </label>
                 {d.affSolInclude && (
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -1380,7 +1350,7 @@ function MarriageDetailsModal({ open, onClose, subjectName, initialData, onSave 
               <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:16 }}>
                 <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginBottom:d.affDelInclude?14:0 }}>
                   <input type="checkbox" checked={d.affDelInclude} onChange={e=>upd("affDelInclude",e.target.checked)}/>
-                  <span style={{ fontSize:15, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".04em" }}>Affidavit for Delayed Registration of Marriage</span>
+                  <span style={{ fontFamily:F.head, fontSize:14, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".08em" }}>Affidavit for Delayed Registration of Marriage</span>
                 </label>
                 {d.affDelInclude && (
                   <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -1475,20 +1445,20 @@ function Sidebar({ view, setView, auth, pending, onLogout }:
       <button key={n.view} onClick={() => setView(n.view)}
         aria-current={active ? "page" : undefined} className="sarms-nav"
         style={{ width:"calc(100% - 20px)", margin:"2px 10px", display:"flex", alignItems:"center", gap:12, padding:"11px 14px", textAlign:"left",
-          fontSize:16, fontWeight: active ? 700 : 500, minHeight:46, borderRadius:10,
+          fontSize:15, fontWeight: active ? 700 : 500, lineHeight:1.3, minHeight:46, borderRadius:10,
           color: active ? "#fff" : T.text,
           background: active ? T.priHov : "transparent",
-          border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+          border:"none", cursor:"pointer", fontFamily:F.head }}>
         {(() => { const I = NAV_ICON[n.view]; return <I size={20} strokeWidth={active ? 2.4 : 2}/>; })()}
         <span style={{ flex:1 }}>{n.label}</span>
         {n.view === "requests" && pending > 0 && (
-          <span title={`${pending} pending`} style={{ fontSize:14, fontWeight:700, minWidth:26, padding:"2px 8px", borderRadius:99, background: active ? "#fff" : T.red, color: active ? T.priHov : "#fff", textAlign:"center" }}>{pending}</span>
+          <span title={`${pending} pending`} style={{ fontFamily:F.head, fontSize:13, fontWeight:700, minWidth:26, padding:"2px 8px", borderRadius:99, background: active ? "#fff" : T.red, color: active ? T.priHov : "#fff", textAlign:"center" }}>{pending}</span>
         )}
       </button>
     );
   };
   const group = (label: string) => (
-    <div style={{ padding:"18px 24px 6px", fontSize:13, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:".08em" }}>{label}</div>
+    <div style={{ padding:"18px 24px 6px", fontFamily:F.head, fontSize:12, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:".14em" }}>{label}</div>
   );
   return (
     <aside aria-label="Main navigation" style={{ width:"clamp(240px, 15vw, 280px)", minHeight:"100vh", background:T.surface, borderRight:`1px solid ${T.border}`,
@@ -1499,9 +1469,9 @@ function Sidebar({ view, setView, auth, pending, onLogout }:
         <div style={{ width:40, height:40, flexShrink:0 }}>
           <ImageWithFallback src={logoSrc} alt="PdSPA" style={{ width:"100%", height:"100%", objectFit:"contain" }}/>
         </div>
-        <div>
-          <div style={{ fontSize:17, fontWeight:700, color:T.text, lineHeight:1.2 }}>San Pedro Apostol</div>
-          <div style={{ fontSize:14, color:T.muted, lineHeight:1.3 }}>Parish Records (SARMS)</div>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontFamily:F.display, fontSize:"clamp(15px, 1.05vw, 18px)", fontWeight:800, color:T.priHov, lineHeight:1.15, letterSpacing:"-.02em", whiteSpace:"nowrap" }}>San Pedro Apostol</div>
+          <div style={{ fontFamily:F.head, fontSize:11, fontWeight:600, color:T.muted, lineHeight:1.3, marginTop:4, textTransform:"uppercase", letterSpacing:".14em" }}>Parish Records · SARMS</div>
         </div>
       </div>
 
@@ -1516,7 +1486,7 @@ function Sidebar({ view, setView, auth, pending, onLogout }:
       {/* User */}
       <div style={{ padding:"14px 18px", borderTop:`1px solid ${T.border}`, background:T.bg }}>
         <div style={{ fontSize:15, color:T.muted }}>Signed in as</div>
-        <div style={{ fontSize:16, fontWeight:700, color:T.text }}>{auth.name}</div>
+        <div style={{ fontFamily:F.head, fontSize:16, fontWeight:700, color:T.text }}>{auth.name}</div>
         <div style={{ fontSize:14, color:T.muted, marginBottom:6 }}>@{auth.username}</div>
         <div style={{ marginBottom:8 }}><RoleTag a={auth}/></div>
         <Btn variant="ghost" onClick={onLogout} style={{ width:"100%" }}><LogOut size={18}/> Sign out</Btn>
@@ -1532,8 +1502,8 @@ const DEMO = [
   { label:"Admin (designated Superadmin)", u:"jreyes",  p:"admin123" },
 ];
 
-function LoginView({ accounts, onLogin, onFail }:
-  { accounts: StaffAccount[]; onLogin: (a: StaffAccount) => void; onFail: (username: string, why: string) => void }) {
+function LoginView({ accounts, onLogin, onFail, onPublic }:
+  { accounts: StaffAccount[]; onLogin: (a: StaffAccount) => void; onFail: (username: string, why: string) => void; onPublic: () => void }) {
   const [user,    setUser]    = useState("");
   const [pass,    setPass]    = useState("");
   const [showPw,  setShowPw]  = useState(false);
@@ -1576,7 +1546,7 @@ function LoginView({ accounts, onLogin, onFail }:
 
   const ulInp: React.CSSProperties = {
     width:"100%", border:"none", borderBottom:"1.5px solid #D6CC9A",
-    padding:"10px 0", fontSize:17, fontFamily:"inherit",
+    padding:"10px 0", fontSize:17, fontFamily:F.body,
     color:"#1A1400", background:"transparent", outline:"none",
   };
 
@@ -1602,10 +1572,12 @@ function LoginView({ accounts, onLogin, onFail }:
               style={{ width:"100%", height:"100%", objectFit:"contain", filter:"drop-shadow(0 2px 8px rgba(0,0,0,.15))" }}/>
           </div>
           <div style={{ textAlign:"center" }}>
-            <p style={{ fontSize:21, fontWeight:700, color:"#3D1F00", margin:0, lineHeight:1.3 }}>
+            <p style={{ fontFamily:F.head, fontSize:12, fontWeight:600, color:"#6B3F00", margin:0, letterSpacing:".22em", textTransform:"uppercase" }}>Parroquia de</p>
+            <p style={{ fontFamily:F.display, fontSize:28, fontWeight:800, color:"#3D1F00", margin:"5px 0 12px", lineHeight:1.15, letterSpacing:"-.035em", whiteSpace:"nowrap" }}>San Pedro Apostol</p>
+            <p style={{ fontFamily:F.head, fontSize:15, fontWeight:700, color:"#3D1F00", margin:0, lineHeight:1.35, letterSpacing:".01em" }}>
               PdSPA Record<br/>Management System
             </p>
-            <p style={{ fontSize:14, color:"#6B3F00", margin:"8px 0 0", letterSpacing:".06em", textTransform:"uppercase", fontWeight:600 }}>Staff &amp; Admin Access</p>
+            <p style={{ fontFamily:F.head, fontSize:12, color:"#6B3F00", margin:"12px 0 0", letterSpacing:".16em", textTransform:"uppercase", fontWeight:600 }}>Staff &amp; Admin Access</p>
           </div>
         </div>
 
@@ -1614,8 +1586,9 @@ function LoginView({ accounts, onLogin, onFail }:
           display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
           padding:"48px 48px 40px" }}>
 
-          <h1 style={{ fontSize:23, fontWeight:800, color:"#C9960A", letterSpacing:".12em",
-            textTransform:"uppercase", margin:"0 0 36px" }}>
+          <p aria-hidden style={{ fontFamily:F.display, fontSize:25, fontWeight:700, color:"#8A6706", margin:"0 0 8px", lineHeight:1.15, letterSpacing:"-.025em" }}>Welcome</p>
+          <h1 style={{ fontFamily:F.head, fontSize:20, fontWeight:800, color:"#C9960A", letterSpacing:".18em",
+            textTransform:"uppercase", margin:"0 0 34px" }}>
             User Login
           </h1>
 
@@ -1651,7 +1624,7 @@ function LoginView({ accounts, onLogin, onFail }:
             <button type="submit" disabled={busy || !!lockLeft}
               style={{ width:"100%", padding:"12px", borderRadius:99,
                 background:"#C9960A", color:"#fff", border:"none", cursor:busy||lockLeft?"not-allowed":"pointer",
-                fontSize:17, fontWeight:800, letterSpacing:".12em", textTransform:"uppercase",
+                fontFamily:F.head, fontSize:16, fontWeight:800, letterSpacing:".16em", textTransform:"uppercase",
                 opacity:busy||lockLeft?.6:1, transition:"opacity .15s",
                 boxShadow:"0 2px 4px rgba(150,105,0,.25), 0 8px 18px -6px rgba(201,150,10,.55)" }}>
               {busy ? "Signing in..." : "Login"}
@@ -1659,18 +1632,19 @@ function LoginView({ accounts, onLogin, onFail }:
           </form>
 
           <div style={{ marginTop:32, width:"100%", maxWidth:300 }}>
-            <p style={{ fontSize:13, color:T.muted, textTransform:"uppercase", letterSpacing:".06em",
+            <p style={{ fontFamily:F.head, fontSize:12, color:T.muted, textTransform:"uppercase", letterSpacing:".14em",
               fontWeight:700, marginBottom:8 }}>Demo accounts</p>
             {DEMO.map(d => (
               <button key={d.u} onClick={() => { setUser(d.u); setPass(d.p); setErr(""); }}
                 style={{ display:"flex", justifyContent:"space-between", width:"100%",
                   padding:"4px 0", background:"none", border:"none", cursor:"pointer",
-                  fontSize:14, color:T.sub }}>
+                  fontFamily:F.body, fontSize:14, color:T.sub }}>
                 <span style={{ fontWeight:600 }}>{d.label}</span>
-                <span style={{ fontFamily:"monospace", color:T.muted }}>{d.u} / {d.p}</span>
+                <span style={{ fontFamily:F.body, letterSpacing:".03em", color:T.muted }}>{d.u} / {d.p}</span>
               </button>
             ))}
             <p style={{ fontSize:13, color:T.muted, marginTop:10, lineHeight:1.5 }}>All sign-in attempts are recorded. Contact the parish administrator for account access.</p>
+            <button type="button" onClick={onPublic} style={{ ...linkBtn, fontSize:14, marginTop:6 }}>← Parishioner website</button>
           </div>
         </div>
       </div>
@@ -1710,8 +1684,8 @@ function DashboardView({ appts, activities, issuance, logs, accounts }:
   const stat = (label: string, val: number, note: string, onClick: () => void, accent?: string) => (
     <button onClick={onClick} style={{ textAlign:"left", background:T.surface, border:`1px solid ${T.border}`, borderRadius:8, padding:"16px 18px", cursor:"pointer",
       borderTop:`3px solid ${accent ?? T.border}` }}>
-      <div style={{ fontSize:14, fontWeight:600, color:T.sub, textTransform:"uppercase", letterSpacing:".04em", marginBottom:6 }}>{label}</div>
-      <div style={{ fontSize:29, fontWeight:800, color:T.text, lineHeight:1 }}>{val}</div>
+      <div style={{ fontFamily:F.head, fontSize:12, fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:".1em", marginBottom:8 }}>{label}</div>
+      <div style={{ fontFamily:F.head, fontSize:32, fontWeight:800, color:T.text, lineHeight:1, letterSpacing:"-.02em" }}>{val}</div>
       <div style={{ fontSize:14, color:T.muted, marginTop:4 }}>{note}</div>
     </button>
   );
@@ -1744,7 +1718,7 @@ function DashboardView({ appts, activities, issuance, logs, accounts }:
           style={{ textAlign:"left", padding:"10px 12px", border:`1px solid ${T.border}`, borderRadius:6, background:T.bg, cursor:"pointer" }}
           onMouseEnter={e => (e.currentTarget.style.borderColor = T.primary)}
           onMouseLeave={e => (e.currentTarget.style.borderColor = T.border)}>
-          <div style={{ fontSize:16, fontWeight:600, color:T.text }}>{s.label} <span style={{ color:T.primary }}>→</span></div>
+          <div style={{ fontFamily:F.head, fontSize:15, fontWeight:600, color:T.text }}>{s.label} <span style={{ color:T.primary }}>→</span></div>
           <div style={{ fontSize:14, color:T.muted, marginTop:2 }}>{s.sub}</div>
         </button>
       ))}
@@ -1782,10 +1756,13 @@ function DashboardView({ appts, activities, issuance, logs, accounts }:
               display:"none" }}/>
             <div style={{ position:"relative", display:"flex", alignItems:"center", gap:28 }}>
               <div style={{ flex:1, minWidth:0 }}>
-                <h1 style={{ margin:"0 0 8px", fontSize:46, lineHeight:1.05, fontWeight:800, letterSpacing:"-.025em", color:T.text }}>
-                  {greet}, <span style={{ color:"#C9960A" }}>{first}</span>.
+                <div style={{ fontFamily:F.head, fontSize:12, fontWeight:700, color:T.priHov, textTransform:"uppercase", letterSpacing:".2em", marginBottom:6 }}>
+                  Parroquia de San Pedro Apostol · Vinzons
+                </div>
+                <h1 style={{ fontFamily:F.display, margin:"0 0 10px", fontSize:"clamp(38px, 3vw, 52px)", lineHeight:1.08, fontWeight:800, letterSpacing:"-.04em", color:T.text }}>
+                  {greet}, <span style={{ color:T.priHov }}>{first}</span>
                 </h1>
-                <div style={{ fontSize:18, color:T.sub, maxWidth:560 }}>
+                <div style={{ fontFamily:F.body, fontSize:18, color:T.sub, maxWidth:560, lineHeight:1.5 }}>
                   {count("pending") > 0
                     ? <>You have <b style={{ color:T.text }}>{count("pending")} pending request{count("pending") === 1 ? "" : "s"}</b> and <b style={{ color:T.text }}>{todayCount} activit{todayCount === 1 ? "y" : "ies"}</b> today.</>
                     : <>All requests are clear — <b style={{ color:T.text }}>{todayCount} activit{todayCount === 1 ? "y" : "ies"}</b> on today's calendar.</>}
@@ -1816,8 +1793,8 @@ function DashboardView({ appts, activities, issuance, logs, accounts }:
               return (
                 <div key={u.key} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 14px", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ flexShrink:0, width:46, textAlign:"center", padding:"4px 6px", background:T.priLight, border:`1px solid ${T.borderMd}`, borderRadius:6 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:col, textTransform:"uppercase" }}>{d.toLocaleDateString("en-PH",{month:"short"})}</div>
-                    <div style={{ fontSize:21, fontWeight:800, color:T.text, lineHeight:1.1 }}>{d.getDate()}</div>
+                    <div style={{ fontFamily:F.head, fontSize:12, fontWeight:700, color:col, textTransform:"uppercase", letterSpacing:".08em" }}>{d.toLocaleDateString("en-PH",{month:"short"})}</div>
+                    <div style={{ fontFamily:F.head, fontSize:21, fontWeight:800, color:T.text, lineHeight:1.1 }}>{d.getDate()}</div>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:16, fontWeight:600, color:T.text, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.title}</div>
@@ -1862,7 +1839,7 @@ function DashboardView({ appts, activities, issuance, logs, accounts }:
                     <div style={{ fontSize:15, fontWeight:600, color:T.text }}>{a.name} {a.status === "inactive" && <SPill s="inactive"/>}</div>
                     <div style={{ fontSize:14, color:T.muted }}>{a.position} · last action {last ? fmtDT(last) : "—"}</div>
                   </div>
-                  <span style={{ fontSize:19, fontWeight:800, color:T.text }}>{total}</span>
+                  <span style={{ fontFamily:F.head, fontSize:19, fontWeight:800, color:T.text }}>{total}</span>
                 </div>
               ))}
             </Card>
@@ -1951,13 +1928,13 @@ function RequestsView({ appts, setAppts, activities, services, books, issuance, 
               {rows.map(a => (
                 <tr key={a.id} style={{ borderTop:`1px solid ${T.border}`, cursor:"pointer" }} onClick={() => setOpenId(a.id)}
                   onMouseEnter={e => (e.currentTarget.style.background = T.bg)} onMouseLeave={e => (e.currentTarget.style.background = "")}>
-                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.id}</td>
-                  <td style={TD}><div style={{ fontWeight:600 }}>{a.parishioner}</div><div style={{ fontSize:14, color:T.muted }}>for {a.subjectName}</div></td>
+                  <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{a.id}</td>
+                  <td style={TD}><div style={{ fontWeight:600 }}>{a.parishioner}{a.source === "online" && <span style={{ marginLeft:8, padding:"1px 7px", borderRadius:4, background:T.blueL, color:T.blue, fontFamily:F.head, fontSize:12, fontWeight:700 }}>Online</span>}</div><div style={{ fontSize:14, color:T.muted }}>for {a.subjectName}</div></td>
                   <td style={TD}><TypeTag type={a.sacramentType}/></td>
                   <td style={{ ...TD, fontSize:15 }}>{fmtShort(a.submittedAt)}</td>
                   <td style={{ ...TD, fontSize:15 }}>{a.prefDate ? `${fmtShort(a.prefDate)} · ${fmtTime(a.prefTime)}` : "—"}</td>
                   <td style={{ ...TD, fontSize:15, fontWeight: a.apprDate ? 600 : 400 }}>{a.apprDate ? `${fmtShort(a.apprDate)} · ${fmtRange(a.apprStart, a.apprEnd)}` : "—"}</td>
-                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.orNo || "—"}</td>
+                  <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{a.orNo || "—"}</td>
                   <td style={TD}><Badge status={a.status}/></td>
                   <td style={TD}><button style={linkBtn}>Open →</button></td>
                 </tr>
@@ -2049,7 +2026,7 @@ function RequestDetail({ r, appts, setAppts, activities, services, books, issuan
             <KV k="Request ID" v={r.id} mono/><KV k="Service" v={<TypeTag type={r.sacramentType}/>}/>
             <KV k="Subject / Recipient" v={r.subjectName}/><KV k="Date of Sacrament" v={r.dateOfSacrament ? fmt(r.dateOfSacrament) : ""}/>
             <KV k="Purpose" v={r.purposeOf}/><KV k="Submitted" v={fmt(r.submittedAt)}/>
-            <KV k="Base fee" v={svc ? peso(svc.fee) : ""}/><KV k="Staff remarks" v={r.staffNotes}/>
+            <KV k="Base fee" v={svc ? peso(svc.fee) : ""}/><KV k="Submitted via" v={r.source === "online" ? "Public website (online request)" : "Parish office"}/><KV k="Staff remarks" v={r.staffNotes}/>
           </>)}
           {section("Client Information", <>
             <KV k="Client" v={r.parishioner}/><KV k="Contact" v={r.contact}/><KV k="Email" v={r.email}/><KV k="Address" v={r.address}/>
@@ -2179,7 +2156,7 @@ function CalendarView({ activities, setActivities, appts }:
     <div>
       <PageHead title="Calendar of Activities" sub="Approved appointments come from Requests (read-only). Parish activities are added here."
         right={<><Btn variant="outline" size="sm" onClick={() => move(-1)}>‹</Btn>
-          <span style={{ fontSize:17, fontWeight:700, minWidth:140, textAlign:"center" }}>{new Date(ym.y, ym.m, 1).toLocaleDateString("en-PH",{ month:"long", year:"numeric" })}</span>
+          <span style={{ fontFamily:F.head, fontSize:17, fontWeight:700, minWidth:150, textAlign:"center" }}>{new Date(ym.y, ym.m, 1).toLocaleDateString("en-PH",{ month:"long", year:"numeric" })}</span>
           <Btn variant="outline" size="sm" onClick={() => move(1)}>›</Btn>
           <Btn variant="ghost" size="sm" onClick={() => setYm({ y:t.getFullYear(), m:t.getMonth() })}>Today</Btn>
           <Btn size="sm" onClick={() => setEdit(BLANK_ACT(todayISO()))}>+ Add Activity</Btn></>}/>
@@ -2423,13 +2400,13 @@ function BookEntityView({ books, setBooks, appts, prefill, clearFocus }:
             {rows.length === 0 && <EmptyRow cols={9} text="No entries found."/>}
             {rows.map(b => (
               <tr key={b.id} style={{ borderTop:`1px solid ${T.border}` }}>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{b.id}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{b.id}</td>
                 <td style={{ ...TD, fontSize:15 }}>{b.bookType}</td>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{b.bookNo} / {b.page} / {b.entryNo}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{b.bookNo} / {b.page} / {b.entryNo}</td>
                 <td style={{ ...TD, fontWeight:600 }}>{b.recipient}</td>
                 <td style={{ ...TD, fontSize:15 }}>{fmtShort(b.dateOfSacrament)}</td>
                 <td style={{ ...TD, fontSize:15 }}>{b.officiant || "—"}</td>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{b.linkedRequestId || "—"}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{b.linkedRequestId || "—"}</td>
                 <td style={TD}><SPill s={b.status}/></td>
                 <td style={{ ...TD, whiteSpace:"nowrap" }}>
                   <button style={linkBtn} onClick={() => setView(b)}>View</button>{"  ·  "}
@@ -2586,11 +2563,11 @@ function CertificatesView({ appts, issuance, setIssuance, books, renderCert, foc
               const iss = issuedFor(a.id);
               return (
                 <tr key={a.id} style={{ borderTop:`1px solid ${T.border}` }}>
-                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.id}</td>
+                  <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{a.id}</td>
                   <td style={{ ...TD, fontWeight:600 }}>{a.parishioner}</td>
                   <td style={TD}><TypeTag type={a.sacramentType}/></td>
                   <td style={TD}>{a.subjectName}</td>
-                  <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.orNo || "—"}</td>
+                  <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{a.orNo || "—"}</td>
                   <td style={TD}><Badge status={a.status}/></td>
                   <td style={{ ...TD, fontSize:15 }}>{iss ? <><b>{iss.certNo}</b>{iss.reprintCount ? ` · ${iss.reprintCount} reprint(s)` : ""}</> : <span style={{ color:T.muted }}>Not issued</span>}</td>
                   <td style={{ ...TD, whiteSpace:"nowrap" }}>
@@ -2648,9 +2625,9 @@ function IssuanceView({ issuance, setIssuance, appts, renderCert }:
             {rows.length === 0 && <EmptyRow cols={9} text="No issuance records."/>}
             {rows.map(i => (
               <tr key={i.id} style={{ borderTop:`1px solid ${T.border}` }}>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15, fontWeight:600 }}>{i.certNo}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15, fontWeight:600 }}>{i.certNo}</td>
                 <td style={TD}>{i.client}</td>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{i.requestId}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{i.requestId}</td>
                 <td style={TD}><TypeTag type={i.type}/></td>
                 <td style={{ ...TD, fontSize:15 }}>{i.issuedBy}</td>
                 <td style={{ ...TD, fontSize:15 }}>{fmtDT(i.issuedAt)}</td>
@@ -2773,10 +2750,10 @@ function ReportsView({ appts, issuance, books, activities, logs, services }:
   }
   function printRep() {
     if (!out) return;
-    const html = `<!doctype html><html><head><title>${out.name}</title><style>body{font-family:Inter,Arial,sans-serif;color:#1A1400;padding:32px}h1{font-size:18px;margin:0}p{color:#5C5020;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}th{text-align:left;background:#FEF9E7;border-bottom:2px solid #C9960A;padding:6px}td{border-bottom:1px solid #EDE8D4;padding:6px}</style></head><body>
+    const html = `<!doctype html><html><head><title>${out.name}</title><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&display=swap" rel="stylesheet"><style>body{font-family:Arial,Helvetica,sans-serif;color:#1A1400;padding:32px}h1{font-family:'Montserrat',sans-serif;font-size:18px;font-weight:700;margin:0}th{font-family:'Montserrat',sans-serif;font-weight:700}p{color:#5C5020;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}th{text-align:left;background:#FEF9E7;border-bottom:2px solid #C9960A;padding:6px}td{border-bottom:1px solid #EDE8D4;padding:6px}</style></head><body>
       <h1>Parroquia de San Pedro Apostol — ${out.name}</h1><p>${out.range} · Generated by ${auth.name} · ${fmtDT(nowStamp())}</p>
       <table><thead><tr>${out.head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${out.rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>
-      <script>window.onload=()=>window.print()</script></body></html>`;
+      <script>window.onload=()=>{(document.fonts?document.fonts.ready:Promise.resolve()).then(()=>window.print())}</script></body></html>`;
     openBlobPrint(html);
     log({ module:"Reports", actionType:"Print Report", recordType:"Report", recordId:out.name, desc:`${who(auth)} printed the ${out.name} (${out.range}) at ${clock()}.` });
   }
@@ -2828,7 +2805,7 @@ function ReportsView({ appts, issuance, books, activities, logs, services }:
             <thead><tr>{["ID","Report","Range","Generated By","Generated At","Rows",""].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
             <tbody>{archive.map(a => (
               <tr key={a.id} style={{ borderTop:`1px solid ${T.border}` }}>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.id}</td><td style={{ ...TD, fontWeight:600 }}>{a.name}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{a.id}</td><td style={{ ...TD, fontWeight:600 }}>{a.name}</td>
                 <td style={TD}>{a.range}</td><td style={TD}>{a.by}</td><td style={{ ...TD, fontSize:15 }}>{fmtDT(a.at)}</td><td style={TD}>{a.rows}</td>
                 <td style={TD}><button style={linkBtn} onClick={() => { setRep(a.name as ReportName); setTab("generate"); setOut(null); }}>Regenerate</button></td>
               </tr>))}</tbody>
@@ -2909,9 +2886,9 @@ function StaffAccountsView({ accounts, setAccounts }: { accounts: StaffAccount[]
             const self = a.username === auth.username;
             return (
               <tr key={a.id} style={{ borderTop:`1px solid ${T.border}`, opacity: a.status === "inactive" ? .7 : 1 }}>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>{a.empId}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>{a.empId}</td>
                 <td style={{ ...TD, fontWeight:600 }}>{a.name}{self && <span style={{ fontSize:14, color:T.muted, fontWeight:400 }}> (you)</span>}</td>
-                <td style={{ ...TD, fontFamily:"monospace", fontSize:15 }}>@{a.username}</td>
+                <td style={{ ...TD, fontFamily:F.body, letterSpacing:".03em", fontSize:15 }}>@{a.username}</td>
                 <td style={{ ...TD, fontSize:15 }}>{a.position}</td>
                 <td style={TD}><RoleTag a={a}/></td>
                 <td style={TD}><SPill s={a.status}/></td>
@@ -3135,7 +3112,7 @@ function AuditLogsView({ logs, accounts }: { logs: AuditLog[]; accounts: StaffAc
                 <td style={TD}><span style={{ fontSize:14, fontWeight:600, padding:"2px 7px", borderRadius:4,
                   background: l.actionType === "Failed Login" ? T.redL : T.priLight, color: l.actionType === "Failed Login" ? T.red : T.priHov, whiteSpace:"nowrap" }}>{l.actionType}</span></td>
                 <td style={{ ...TD, fontSize:15 }}>{l.module}</td>
-                <td style={{ ...TD, fontSize:15 }}>{l.client || "—"}{l.recordId && <div style={{ fontSize:14, color:T.muted, fontFamily:"monospace" }}>{l.recordId}</div>}</td>
+                <td style={{ ...TD, fontSize:15 }}>{l.client || "—"}{l.recordId && <div style={{ fontSize:14, color:T.muted, fontFamily:F.body, letterSpacing:".03em" }}>{l.recordId}</div>}</td>
                 <td style={{ ...TD, fontSize:15, color:T.sub, maxWidth:420 }}>{l.desc}</td>
               </tr>
             ))}
@@ -3161,6 +3138,8 @@ function AuditLogsView({ logs, accounts }: { logs: AuditLog[]; accounts: StaffAc
 
 /* ─── APP ROOT ───────────────────────────────────────────── */
 export default function App() {
+  const hashMode = () => (typeof window !== "undefined" && window.location.hash.startsWith("#/website") ? "public" : "staff") as "staff" | "public";
+  const [mode, setMode] = useState<"public" | "staff">(hashMode);
   const [auth, setAuth] = useState<Auth | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [view, setView] = useState<View>("dashboard");
@@ -3177,6 +3156,14 @@ export default function App() {
   const [marriageFor, setMarriageFor] = useState<string | null>(null);
   const [logoB64, setLogoB64] = useState("");
   const { toasts, push, dismiss } = useToasts();
+
+  /* SARMS (default) and the public website share this one App state; #/website opens the public website. */
+  useEffect(() => {
+    const onHash = () => setMode(hashMode());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+    const openPublic = () => { window.location.hash = "#/website"; setMode("public"); window.scrollTo({ top:0 }); };
 
   useEffect(() => {
     const img = new Image();
@@ -3195,13 +3182,25 @@ export default function App() {
   const addLog = useCallback((e: LogInput, who?: Auth) => {
     const a = who ?? auth;
     const entry: AuditLog = { client:"", recordType:"", recordId:"", reason:"", ...e, id:"", at:nowStamp(),
-      actor: e.actor ?? a?.name ?? "", username: e.username ?? a?.username ?? "", device:DEVICE, ip:"192.168.1.24" };
+      actor: e.actor ?? a?.name ?? "", username: e.username ?? a?.username ?? "", device:e.device ?? DEVICE, ip:e.ip ?? "192.168.1.24" };
     setLogs(l => {
       const max = l.reduce((m, x) => Math.max(m, parseInt(x.id.replace(/\D/g, ""), 10) || 0), _logid);
       _logid = max + 1;
       return [{ ...entry, id:`LOG-${_logid}` }, ...l];
     });
   }, [auth]);
+
+  /* A request submitted on the public website becomes a normal Pending request in the staff queue. */
+  function submitOnline(s: OnlineSubmission): string {
+    const id = nid();
+    const rec: Appointment = { ...R0, id, submittedAt:nowStamp(), status:"pending", source:"online", parishioner:s.parishioner, contact:s.contact, email:s.email,
+      address:s.address, sacramentType:s.sacramentType, subjectName:s.subjectName, dateOfSacrament:s.dateOfSacrament, purposeOf:s.purposeOf, prefDate:s.prefDate, prefTime:s.prefTime };
+    setAppts(l => [rec, ...l]);
+    addLog({ module:"Requests", actionType:"Online Request Received", actor:"Online Portal", username:"public-website", client:s.parishioner, recordType:"Request", recordId:id,
+      desc:`${s.parishioner} submitted a ${s.sacramentType} request for ${s.subjectName} through the public website at ${clock()}.`,
+      device:"Public website", ip:"—", next:{ Status:"Pending", Service:s.sacramentType, "Preferred Schedule": s.prefDate ? `${s.prefDate}${s.prefTime ? ` ${s.prefTime}` : ""}` : "—" } });
+    return id;
+  }
 
   function login(acc: StaffAccount) {
     const a: Auth = { id:acc.id, name:acc.name, username:acc.username, role:acc.role, superadmin:acc.superadmin, since:nowStamp() };
@@ -3225,17 +3224,24 @@ export default function App() {
     .sarms-btn-outline:hover:not(:disabled), .sarms-btn-ghost:hover:not(:disabled) { background: ${T.priLight} !important; }
     .sarms-btn-danger:hover:not(:disabled) { filter: brightness(.9); }
     .sarms-nav:not([aria-current]):hover { background: ${T.priLight} !important; }
-    .sarms-close { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; min-height:38px; border-radius:8px; border:1px solid ${T.borderMd}; background:#fff; color:${T.text}; font:600 15px Inter, sans-serif; cursor:pointer; flex-shrink:0; }
+    .sarms-close { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; min-height:38px; border-radius:8px; border:1px solid ${T.borderMd}; background:#fff; color:${T.text}; font:600 14px ${F.head}; cursor:pointer; flex-shrink:0; }
     .sarms-close:hover { background:${T.priLight}; }
     tbody tr { transition: background .1s; } tbody tr:nth-child(even) { background: #FFFDF7; } tbody tr:hover { background: ${T.priLight}; }
     input::placeholder, textarea::placeholder { color: #8A7D4C; }
     input[type=checkbox], input[type=radio] { width: 18px; height: 18px; accent-color: ${T.priHov}; }
-    body { font-family: 'Inter', system-ui, sans-serif; font-size: 16px; line-height: 1.5; background: ${T.bg}; color: ${T.text}; }
+    body { font-family: ${F.body}; font-size: 16px; line-height: 1.5; background: ${T.bg}; color: ${T.text}; }
     ::-webkit-scrollbar { width: 12px; height: 12px; } ::-webkit-scrollbar-thumb { background: ${T.borderMd}; border-radius: 99px; }
+    h1, h2, h3, h4, th { font-family: ${F.head}; }
     @media print { aside { display: none !important; } }
   `}</style>;
 
-  if (!auth) return <>{style}<LoginView accounts={accounts} onLogin={login} onFail={failed}/><Toasts toasts={toasts} dismiss={dismiss}/></>;
+  if (mode === "public") {
+    return <PublicSite services={services} activities={activities} requests={appts} settings={settings}
+      logoSrc={logoSrc as string} bannerSrc={parishBanner as string}
+      conflictsFor={(d, st, en) => findConflicts(d, st, en, activities, appts)}
+      onSubmit={submitOnline}/>;
+  }
+  if (!auth) return <>{style}<LoginView accounts={accounts} onLogin={login} onFail={failed} onPublic={openPublic}/><Toasts toasts={toasts} dismiss={dismiss}/></>;
 
   const go = (v: View, f?: Focus) => { if (!canSee(v, auth)) return; setView(v); setFocus(f ?? {}); };
   const safeView: View = canSee(view, auth) ? view : "dashboard";
@@ -3251,10 +3257,11 @@ export default function App() {
         <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column" }}>
           <header style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"12px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", position:"sticky", top:0, zIndex:20, gap:16 }}>
             <span style={{ display:"flex", alignItems:"center", gap:10, fontSize:15, color:T.sub }}>
-              SARMS <ChevronRight size={16}/> <b style={{ fontSize:17, color:T.text }}>{VIEW_LABEL[safeView]}</b>
+              SARMS <ChevronRight size={16}/> <b style={{ fontFamily:F.head, fontSize:16, fontWeight:700, color:T.text }}>{VIEW_LABEL[safeView]}</b>
             </span>
             <span style={{ display:"flex", alignItems:"center", gap:14, fontSize:15, color:T.sub }}>
               <span>{new Date().toLocaleDateString("en-PH", { weekday:"long", month:"long", day:"numeric", year:"numeric" })}</span>
+              <Btn variant="ghost" size="sm" onClick={openPublic}>Public website</Btn>
               <Btn variant={helpOpen ? "primary" : "outline"} size="sm" onClick={() => setHelpOpen(h => !h)} aria-expanded={helpOpen}><HelpCircle size={18}/> How to use this page</Btn>
             </span>
           </header>
@@ -3262,7 +3269,7 @@ export default function App() {
             <div style={{ background:T.priLight, borderBottom:`1px solid ${T.borderMd}`, padding:"14px 32px", display:"flex", gap:28, alignItems:"flex-start", flexWrap:"wrap" }}>
               {VIEW_HELP[safeView].map((step, i) => (
                 <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", maxWidth:420, fontSize:16, color:T.text, lineHeight:1.45 }}>
-                  <span style={{ width:28, height:28, borderRadius:99, background:T.priHov, color:"#fff", fontWeight:700, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{i + 1}</span>
+                  <span style={{ width:28, height:28, borderRadius:99, background:T.priHov, color:"#fff", fontFamily:F.head, fontWeight:700, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:15 }}>{i + 1}</span>
                   {step}
                 </div>
               ))}

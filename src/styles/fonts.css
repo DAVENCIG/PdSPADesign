@@ -1,1 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* SARMS type system
+   Garet       — major titles, parish branding, and ceremonial headings
+   Montserrat  — navigation, controls, section headings, and table headers
+   Arial       — body copy, forms, tables, and records data
+
+   Garet is a licensed font and is not distributed by Google Fonts. These local()
+   declarations use it when installed on the workstation. Montserrat is the safe
+   fallback until licensed Garet .woff2 files are added to the project. */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap');
+
+@font-face {
+  font-family: 'Garet';
+  src: local('Garet'), local('Garet Book');
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Garet';
+  src: local('Garet Heavy');
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}

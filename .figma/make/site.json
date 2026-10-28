@@ -1,0 +1,11 @@
+{
+  "title": "PDSPA 2",
+  "description": "This web app offers a fully responsive and accessible interface for managing appointments and certificates, designed for staff use with a clean and modern aesthetic.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
